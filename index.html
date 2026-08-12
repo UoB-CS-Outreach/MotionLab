@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#081f3d">
+    <meta name="description" content="Connect a phone, explore motion sensor data, and train a small activity-recognition model in the browser.">
+    <title>Motion Lab</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="site-header">
+    <a class="brand" href="./" aria-label="Motion Lab home">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <strong>Motion Lab</strong>
+    </a>
+    <span class="mode-pill" id="modePill">Computer station</span>
+</header>
+
+<noscript>
+    <div class="noscript">Motion Lab needs JavaScript to read and display sensor data.</div>
+</noscript>
+
+<main>
+    <section id="desktopView" hidden>
+        <div class="dashboard-grid">
+            <section class="panel connect-panel" aria-labelledby="connectHeading">
+                <div class="panel-heading">
+                    <div>
+                        <p class="step-label">Step 1</p>
+                        <h2 id="connectHeading">Connect a phone</h2>
+                    </div>
+                    <div class="status-chip waiting" id="desktopConnectionStatus" role="status">
+                        <span></span> Preparing a session
+                    </div>
+                </div>
+
+                <div class="pair-layout">
+                    <div class="qr-frame" id="qrCode" aria-label="Phone connection QR code">
+                        <div class="qr-placeholder">Creating<br>QR code...</div>
+                    </div>
+                    <div class="pair-copy">
+                        <p><strong>Scan with the phone's normal camera.</strong> No app or account is needed.</p>
+                        <p class="muted">The phone will open a sensor page and ask permission before sharing readings.</p>
+                        <div class="link-copy-row">
+                            <input id="phoneLink" type="text" readonly aria-label="Phone connection link" value="Preparing link...">
+                            <button class="button secondary compact" id="copyLinkBtn" type="button" disabled>Copy</button>
+                        </div>
+                        <button class="text-button" id="newSessionBtn" type="button">Create a new pairing session</button>
+                    </div>
+                </div>
+
+                <details class="demo-box">
+                    <summary>No phone yet? Use the signal simulator</summary>
+                    <p>The simulator lets you test the entire activity on this computer.</p>
+                    <div class="inline-controls">
+                        <label>
+                            Demo movement
+                            <select id="demoPattern">
+                                <option value="still">Still</option>
+                                <option value="shake">Side-to-side shake</option>
+                                <option value="bounce">Up-and-down bounce</option>
+                                <option value="circle">Circle</option>
+                            </select>
+                        </label>
+                        <button class="button secondary" id="toggleDemoBtn" type="button">Start simulator</button>
+                    </div>
+                </details>
+            </section>
+
+            <section class="panel readings-panel" aria-labelledby="readingsHeading">
+                <div class="panel-heading">
+                    <div>
+                        <p class="step-label">Live signal</p>
+                        <h2 id="readingsHeading">Sensor readings</h2>
+                    </div>
+                    <span class="sample-rate" id="sampleRate">0 samples/s</span>
+                </div>
+
+                <div class="reading-cards" aria-live="off">
+                    <div><span>Accel X</span><strong id="desktopAx">0.00</strong><small>m/s²</small></div>
+                    <div><span>Accel Y</span><strong id="desktopAy">0.00</strong><small>m/s²</small></div>
+                    <div><span>Accel Z</span><strong id="desktopAz">0.00</strong><small>m/s²</small></div>
+                    <div><span>Gyro α</span><strong id="desktopGx">0.00</strong><small>°/s</small></div>
+                    <div><span>Gyro β</span><strong id="desktopGy">0.00</strong><small>°/s</small></div>
+                    <div><span>Gyro γ</span><strong id="desktopGz">0.00</strong><small>°/s</small></div>
+                </div>
+
+                <div class="chart-grid">
+                    <figure>
+                        <figcaption>
+                            Acceleration including gravity
+                            <span class="legend"><i class="x"></i>X <i class="y"></i>Y <i class="z"></i>Z</span>
+                        </figcaption>
+                        <canvas id="accelChart" aria-label="Live acceleration line chart"></canvas>
+                    </figure>
+                    <figure>
+                        <figcaption>
+                            Gyroscope rotation rate
+                            <span class="legend"><i class="x"></i>α <i class="y"></i>β <i class="z"></i>γ</span>
+                        </figcaption>
+                        <canvas id="gyroChart" aria-label="Live gyroscope line chart"></canvas>
+                    </figure>
+                </div>
+            </section>
+
+            <section class="panel collect-panel" aria-labelledby="collectHeading">
+                <div class="panel-heading">
+                    <div>
+                        <p class="step-label">Step 2</p>
+                        <h2 id="collectHeading">Build a movement dataset</h2>
+                    </div>
+                    <button class="text-button danger" id="clearDataBtn" type="button" disabled>Clear all</button>
+                </div>
+                <p class="panel-intro">Choose a label, press record, then perform that movement for three seconds. Aim for three recordings of each label.</p>
+
+                <div class="record-controls">
+                    <label>
+                        Movement label
+                        <select id="activityLabel">
+                            <option value="Still">Still</option>
+                            <option value="Side-to-side shake">Side-to-side shake</option>
+                            <option value="Up-and-down bounce">Up-and-down bounce</option>
+                            <option value="Circle">Circle</option>
+                            <option value="custom">Write my own...</option>
+                        </select>
+                    </label>
+                    <label id="customLabelWrap" hidden>
+                        Custom label
+                        <input id="customLabel" type="text" maxlength="30" placeholder="e.g. Figure eight">
+                    </label>
+                    <button class="button primary record-button" id="recordBtn" type="button" disabled>
+                        <span class="record-dot"></span> Record 3 seconds
+                    </button>
+                </div>
+
+                <div class="record-progress" id="recordProgress" hidden aria-live="polite">
+                    <div class="progress-track"><span id="recordProgressBar"></span></div>
+                    <strong id="recordProgressText">Get ready...</strong>
+                </div>
+
+                <div class="dataset-empty" id="datasetEmpty">
+                    <span aria-hidden="true">•••</span>
+                    <p>Your recordings will appear here.</p>
+                </div>
+                <div class="dataset-summary" id="datasetSummary" hidden></div>
+
+                <section class="recording-viewer" id="recordingViewer" hidden aria-labelledby="recordingViewerHeading">
+                    <div class="recording-viewer-heading">
+                        <h3 id="recordingViewerHeading">Recorded series</h3>
+                        <label>
+                            View recording
+                            <select id="recordingViewerSelect"></select>
+                        </label>
+                    </div>
+                    <div class="chart-grid recorded-chart-grid">
+                        <figure>
+                            <figcaption>
+                                Acceleration including gravity
+                                <span class="legend"><i class="x"></i>X <i class="y"></i>Y <i class="z"></i>Z</span>
+                            </figcaption>
+                            <canvas id="recordedAccelChart" aria-label="Recorded acceleration line chart"></canvas>
+                        </figure>
+                        <figure>
+                            <figcaption>
+                                Gyroscope rotation rate
+                                <span class="legend"><i class="x"></i>α <i class="y"></i>β <i class="z"></i>γ</span>
+                            </figcaption>
+                            <canvas id="recordedGyroChart" aria-label="Recorded gyroscope line chart"></canvas>
+                        </figure>
+                    </div>
+                    <p class="recording-meta" id="recordingMeta"></p>
+                </section>
+
+                <div class="panel-actions">
+                    <button class="button secondary" id="undoRecordingBtn" type="button" disabled>Undo last</button>
+                    <button class="button secondary" id="downloadDataBtn" type="button" disabled>Download CSV</button>
+                </div>
+            </section>
+
+            <section class="panel model-panel" aria-labelledby="modelHeading">
+                <div class="panel-heading">
+                    <div>
+                        <p class="step-label">Steps 3 &amp; 4</p>
+                        <h2 id="modelHeading">Train and test the model</h2>
+                    </div>
+                    <span class="model-state" id="modelState">Not trained</span>
+                </div>
+                <p class="panel-intro">Motion Lab converts each recording into numerical features, then compares new movements with your labelled examples.</p>
+
+                <button class="button primary wide" id="trainBtn" type="button" disabled>Train activity model</button>
+                <p class="trainingHint muted" id="trainingHint">Collect at least two recordings for each of two movement labels.</p>
+
+                <div class="model-results" id="modelResults" hidden>
+                    <div class="accuracy-card">
+                        <span>Trial-by-trial test accuracy</span>
+                        <strong id="modelAccuracy">—</strong>
+                        <small id="accuracyDetail"></small>
+                    </div>
+                    <div class="prediction-card">
+                        <span>Live prediction</span>
+                        <strong id="predictionLabel">Waiting for movement...</strong>
+                        <div class="confidence-track" aria-hidden="true"><span id="confidenceBar"></span></div>
+                        <small id="predictionConfidence">Collecting a two-second window</small>
+                    </div>
+                </div>
+
+                <details class="explain-box">
+                    <summary>What did the model learn?</summary>
+                    <p>For each three-second example, it measures properties such as average, variation, range, energy and rate of change across all six sensor channels. A small k-nearest-neighbours classifier finds the most similar labelled recordings.</p>
+                </details>
+            </section>
+        </div>
+    </section>
+
+    <section id="phoneView" class="phone-shell" hidden>
+        <div class="phone-hero">
+            <h1>Connect your phone</h1>
+            <p>Enable the sensors, then keep this page open while using the computer.</p>
+        </div>
+
+        <section class="phone-card">
+            <div class="status-chip waiting" id="phoneConnectionStatus" role="status"><span></span> Connecting to computer</div>
+            <button class="button primary phone-start" id="enableSensorsBtn" type="button" disabled>Enable motion sensors</button>
+            <p class="permission-note" id="permissionNote">Your browser may ask for permission. Sensor readings stay in this session and are not saved or uploaded by Motion Lab.</p>
+
+            <div class="motion-orb" id="motionOrb" aria-hidden="true"><span></span></div>
+            <p class="phone-sensor-state" id="phoneSensorState">Waiting to start</p>
+
+            <div class="phone-readings">
+                <div><span>Acceleration</span><strong id="phoneAcceleration">0.00</strong><small>m/s² magnitude</small></div>
+                <div><span>Rotation</span><strong id="phoneRotation">0.00</strong><small>°/s magnitude</small></div>
+                <div><span>Streaming</span><strong id="phoneRate">0</strong><small>samples/s</small></div>
+            </div>
+        </section>
+
+        <section class="phone-tip">
+            <strong>Hold on securely.</strong>
+            <p>Use small, controlled movements and stay clear of other people and equipment.</p>
+        </section>
+    </section>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<footer>
+    <span>Sensor data is processed in your browsers</span>
+</footer>
+
+<!-- Pinned prototype dependencies. The application degrades to simulator/manual-link mode if either CDN is unavailable. -->
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
