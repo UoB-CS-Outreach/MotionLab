@@ -61,8 +61,8 @@ function initDesktop() {
 
     const accelerationChart = new SignalChart($("accelChart"), ["ax", "ay", "az"], {minimumRange: 12});
     const gyroscopeChart = new SignalChart($("gyroChart"), ["gx", "gy", "gz"], {minimumRange: 90});
-    const recordedAccelerationChart = new SignalChart($("recordedAccelChart"), ["ax", "ay", "az"], {minimumRange: 12, maxPoints: 1000});
-    const recordedGyroscopeChart = new SignalChart($("recordedGyroChart"), ["gx", "gy", "gz"], {minimumRange: 90, maxPoints: 1000});
+    const recordedAccelerationChart = new SignalChart($("recordedAccelChart"), ["ax", "ay", "az"], {minimumRange: 12, maxPoints: 1000, fitWidth: true});
+    const recordedGyroscopeChart = new SignalChart($("recordedGyroChart"), ["gx", "gy", "gz"], {minimumRange: 90, maxPoints: 1000, fitWidth: true});
     state.simulator = new MotionSimulator(sample => receiveSample(sample, "simulator"));
 
     function updateDesktopStatus(status, message) {
@@ -283,7 +283,7 @@ function initDesktop() {
         $("recordingViewer").hidden = state.recordings.length === 0;
         $("clearDataBtn").disabled = state.recordings.length === 0;
         $("undoRecordingBtn").disabled = state.recordings.length === 0;
-        $("downloadDataBtn").disabled = state.recordings.length === 0;
+        $("deleteRecordingBtn").disabled = state.recordings.length === 0;
         $("trainBtn").disabled = !readiness.ready;
 
         $("datasetSummary").innerHTML = [...readiness.counts]
@@ -382,42 +382,6 @@ function initDesktop() {
         })[character]);
     }
 
-    function downloadCsv() {
-        const header = ["recording_id", "label", "sample", "time_ms", "device_time_ms", "accel_x", "accel_y", "accel_z", "gyro_x", "gyro_y", "gyro_z", "source"];
-        const rows = [header];
-        state.recordings.forEach((recording, recordingIndex) => {
-            recording.samples.forEach((sample, sampleIndex) => rows.push([
-                recordingIndex + 1,
-                recording.label,
-                sampleIndex + 1,
-                sample.t - recording.samples[0].t,
-                sample.deviceTime,
-                sample.ax,
-                sample.ay,
-                sample.az,
-                sample.gx,
-                sample.gy,
-                sample.gz,
-                sample.source,
-            ]));
-        });
-        const csv = rows.map(row => row.map(csvCell).join(",")).join("\n");
-        const blob = new Blob([csv], {type: "text/csv;charset=utf-8"});
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement("a");
-        anchor.href = url;
-        anchor.download = `motion-lab-${new Date().toISOString().slice(0, 10)}.csv`;
-        document.body.append(anchor);
-        anchor.click();
-        anchor.remove();
-        URL.revokeObjectURL(url);
-    }
-
-    function csvCell(value) {
-        const text = String(value ?? "");
-        return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
-    }
-
     function startSimulator() {
         state.source = "simulator";
         state.simulator.setPattern($("demoPattern").value);
@@ -454,7 +418,19 @@ function initDesktop() {
     });
     $("recordBtn").addEventListener("click", recordTrial);
     $("trainBtn").addEventListener("click", trainModel);
-    $("downloadDataBtn").addEventListener("click", downloadCsv);
+    $("deleteRecordingBtn").addEventListener("click", () => {
+        const selectedIndex = state.recordings.findIndex(recording => recording.id === state.viewedRecordingId);
+        if (selectedIndex < 0) return;
+        const selected = state.recordings[selectedIndex];
+        if (!window.confirm(`Delete the selected “${selected.label}” recording?`)) return;
+
+        state.recordings.splice(selectedIndex, 1);
+        const nextIndex = Math.min(selectedIndex, state.recordings.length - 1);
+        state.viewedRecordingId = nextIndex >= 0 ? state.recordings[nextIndex].id : null;
+        invalidateModel();
+        renderDataset();
+        showToast(`Deleted the selected “${selected.label}” recording.`);
+    });
     $("undoRecordingBtn").addEventListener("click", () => {
         const removed = state.recordings.pop();
         if (!removed) return;
@@ -509,17 +485,13 @@ function initPhone() {
         rateTimes.push(now);
         while (rateTimes.length && now - rateTimes[0] > 2000) rateTimes.shift();
 
-        const acceleration = Math.hypot(sample.ax, sample.ay, sample.az);
-        const rotation = Math.hypot(sample.gx, sample.gy, sample.gz);
-        $("phoneAcceleration").textContent = formatReading(acceleration);
-        $("phoneRotation").textContent = formatReading(rotation);
+        $("phoneAx").textContent = formatReading(sample.ax);
+        $("phoneAy").textContent = formatReading(sample.ay);
+        $("phoneAz").textContent = formatReading(sample.az);
+        $("phoneGx").textContent = formatReading(sample.gx);
+        $("phoneGy").textContent = formatReading(sample.gy);
+        $("phoneGz").textContent = formatReading(sample.gz);
         $("phoneRate").textContent = String(Math.round(rateTimes.length / 2));
-        $("phoneSensorState").textContent = bridge.connected ? "Streaming to the computer" : "Sensors active; computer disconnected";
-
-        const scale = 1 + Math.min(0.3, Math.abs(acceleration - 9.81) / 35 + rotation / 1200);
-        const x = Math.max(-10, Math.min(10, sample.ax));
-        const y = Math.max(-10, Math.min(10, sample.ay));
-        $("motionOrb").style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
     }
 
     sensor = new PhoneMotionSensor(handlePhoneSample);
@@ -535,12 +507,10 @@ function initPhone() {
         try {
             await sensor.start();
             $("enableSensorsBtn").textContent = "Motion sensors enabled";
-            $("phoneSensorState").textContent = "Move the phone to see the signal";
             $("permissionNote").textContent = "Keep this page open. Return to the computer to label and record movements.";
         } catch (error) {
             $("enableSensorsBtn").textContent = "Try enabling sensors again";
             $("enableSensorsBtn").disabled = !bridge.connected;
-            $("phoneSensorState").textContent = "Sensors are not active";
             $("permissionNote").textContent = error.message;
             showToast(error.message);
         }

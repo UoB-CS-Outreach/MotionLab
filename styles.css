@@ -84,28 +84,18 @@ a:focus-visible {
     letter-spacing: -0.02em;
 }
 
-.brand-mark {
-    width: 43px;
-    height: 43px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 3px;
-    border-radius: 12px;
-    background: linear-gradient(135deg, var(--teal), #47d8c0);
-    transform: rotate(-4deg);
-}
-
-.brand-mark i {
-    width: 5px;
+.uob-logo {
+    width: auto;
+    height: 42px;
     display: block;
-    border-radius: 4px;
-    background: white;
 }
 
-.brand-mark i:nth-child(1) { height: 13px; }
-.brand-mark i:nth-child(2) { height: 27px; }
-.brand-mark i:nth-child(3) { height: 20px; }
+.brand-divider {
+    width: 1px;
+    height: 32px;
+    display: block;
+    background: rgba(255, 255, 255, 0.3);
+}
 
 .mode-pill {
     padding: 7px 12px;
@@ -118,7 +108,7 @@ a:focus-visible {
 
 main {
     width: min(1480px, 100%);
-    min-height: calc(100vh - 134px);
+    min-height: calc(100vh - 84px);
     margin: 0 auto;
     padding: clamp(24px, 3vw, 42px);
 }
@@ -315,6 +305,17 @@ label {
     color: var(--navy-soft);
     border: 1px solid #cad5e1;
     background: white;
+}
+
+.button.danger-action {
+    color: #b43a30;
+    border-color: #e8b7b2;
+}
+
+.button.danger-action:not(:disabled):hover {
+    color: #982d25;
+    border-color: #d98f88;
+    background: #fff6f5;
 }
 
 .button.compact {
@@ -634,6 +635,24 @@ canvas {
     text-align: center;
 }
 
+.data-notice {
+    margin-top: 22px;
+    padding: 15px 18px;
+    color: #465569;
+    border: 1px solid #d6e0e9;
+    border-radius: 13px;
+    background: #f9fbfd;
+    font-size: 0.82rem;
+}
+
+.data-notice strong {
+    color: var(--navy-soft);
+}
+
+.data-notice p {
+    margin: 2px 0 0;
+}
+
 .model-results {
     margin-top: 19px;
     display: grid;
@@ -736,32 +755,25 @@ canvas {
     font-size: 0.78rem;
 }
 
-.motion-orb {
-    width: 140px;
-    height: 140px;
-    margin: 25px auto 13px;
-    display: grid;
-    place-items: center;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(0, 169, 157, 0.17), rgba(0, 169, 157, 0.04) 57%, transparent 58%);
-    transition: transform 80ms linear;
-}
-
-.motion-orb span {
-    width: 62px;
-    height: 62px;
-    border: 10px solid rgba(255, 255, 255, 0.85);
-    border-radius: 22px;
-    background: linear-gradient(145deg, var(--teal), #4bd3b9);
-    box-shadow: 0 12px 30px rgba(0, 169, 157, 0.28);
-    transform: rotate(12deg);
-}
-
-.phone-sensor-state {
-    margin-bottom: 22px;
+.phone-readings-heading {
+    margin: 25px 0 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
     color: var(--navy-soft);
-    font-size: 0.88rem;
-    font-weight: 800;
+    text-align: left;
+}
+
+.phone-readings-heading span {
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+.phone-readings-heading b {
+    color: var(--navy-soft);
+    font-variant-numeric: tabular-nums;
 }
 
 .phone-readings {
@@ -813,6 +825,10 @@ canvas {
     font-size: 0.82rem;
 }
 
+.phone-data-notice {
+    margin-top: 14px;
+}
+
 .toast {
     position: fixed;
     z-index: 100;
@@ -842,19 +858,6 @@ canvas {
     text-align: center;
 }
 
-footer {
-    min-height: 54px;
-    padding: 12px clamp(20px, 4vw, 64px);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 20px;
-    color: #748094;
-    border-top: 1px solid #dce3ec;
-    background: #eef3f8;
-    font-size: 0.72rem;
-}
-
 @media (max-width: 1100px) {
     .dashboard-grid {
         grid-template-columns: 1fr;
@@ -871,6 +874,18 @@ footer {
     .site-header {
         min-height: 70px;
         padding: 11px 16px;
+    }
+
+    .uob-logo {
+        height: 34px;
+    }
+
+    .brand-divider {
+        height: 26px;
+    }
+
+    .brand strong {
+        font-size: 1rem;
     }
 
     .mode-pill {
@@ -925,11 +940,6 @@ footer {
         flex: 1;
     }
 
-    footer {
-        align-items: flex-start;
-        flex-direction: column;
-        gap: 3px;
-    }
 }
 
 @media (prefers-reduced-motion: reduce) {

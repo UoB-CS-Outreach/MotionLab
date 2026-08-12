@@ -68,7 +68,6 @@ export class PeerBridge {
         this.connection = connection;
         connection.on("open", () => {
             this.onStatus("connected", this.role === "desktop" ? "Phone connected" : "Connected to computer");
-            if (this.role === "phone") connection.send({type: "hello", device: navigator.userAgent});
         });
         connection.on("data", data => this.onData(data));
         connection.on("close", () => {

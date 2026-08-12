@@ -1,13 +1,14 @@
 const DEFAULT_COLOURS = ["#1769e0", "#00a99d", "#f05d4e"];
 
 export class SignalChart {
-    constructor(canvas, keys, {colours = DEFAULT_COLOURS, maxPoints = 150, minimumRange = 12} = {}) {
+    constructor(canvas, keys, {colours = DEFAULT_COLOURS, maxPoints = 150, minimumRange = 12, fitWidth = false} = {}) {
         this.canvas = canvas;
         this.context = canvas.getContext("2d");
         this.keys = keys;
         this.colours = colours;
         this.maxPoints = maxPoints;
         this.minimumRange = minimumRange;
+        this.fitWidth = fitWidth;
         this.points = [];
         this.pendingDraw = false;
         this.resizeObserver = new ResizeObserver(() => this.scheduleDraw());
@@ -85,8 +86,9 @@ export class SignalChart {
         ctx.stroke();
 
         if (this.points.length < 2) return;
-        const xStep = width / Math.max(1, this.maxPoints - 1);
-        const startX = width - (this.points.length - 1) * xStep;
+        const horizontalSlots = this.fitWidth ? this.points.length : this.maxPoints;
+        const xStep = width / Math.max(1, horizontalSlots - 1);
+        const startX = this.fitWidth ? 0 : width - (this.points.length - 1) * xStep;
 
         this.keys.forEach((_, channelIndex) => {
             ctx.strokeStyle = this.colours[channelIndex];

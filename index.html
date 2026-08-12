@@ -11,7 +11,8 @@
 <body>
 <header class="site-header">
     <a class="brand" href="./" aria-label="Motion Lab home">
-        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <img class="uob-logo" src="assets/uob-logo.png" alt="University of Bradford">
+        <span class="brand-divider" aria-hidden="true"></span>
         <strong>Motion Lab</strong>
     </a>
     <span class="mode-pill" id="modePill">Computer station</span>
@@ -171,7 +172,7 @@
 
                 <div class="panel-actions">
                     <button class="button secondary" id="undoRecordingBtn" type="button" disabled>Undo last</button>
-                    <button class="button secondary" id="downloadDataBtn" type="button" disabled>Download CSV</button>
+                    <button class="button secondary danger-action" id="deleteRecordingBtn" type="button" disabled>Delete selected</button>
                 </div>
             </section>
 
@@ -208,6 +209,11 @@
                 </details>
             </section>
         </div>
+
+        <aside class="data-notice">
+            <strong>Your data is not saved.</strong>
+            <p>Sensor readings, recordings and the trained model are held only in this computer tab's temporary memory. They are deleted when this tab is closed or refreshed.</p>
+        </aside>
     </section>
 
     <section id="phoneView" class="phone-shell" hidden>
@@ -219,15 +225,19 @@
         <section class="phone-card">
             <div class="status-chip waiting" id="phoneConnectionStatus" role="status"><span></span> Connecting to computer</div>
             <button class="button primary phone-start" id="enableSensorsBtn" type="button" disabled>Enable motion sensors</button>
-            <p class="permission-note" id="permissionNote">Your browser may ask for permission. Sensor readings stay in this session and are not saved or uploaded by Motion Lab.</p>
+            <p class="permission-note" id="permissionNote">Your browser may ask for permission to access its motion sensors.</p>
 
-            <div class="motion-orb" id="motionOrb" aria-hidden="true"><span></span></div>
-            <p class="phone-sensor-state" id="phoneSensorState">Waiting to start</p>
-
+            <div class="phone-readings-heading">
+                <strong>Live readings</strong>
+                <span><b id="phoneRate">0</b> samples/s</span>
+            </div>
             <div class="phone-readings">
-                <div><span>Acceleration</span><strong id="phoneAcceleration">0.00</strong><small>m/s² magnitude</small></div>
-                <div><span>Rotation</span><strong id="phoneRotation">0.00</strong><small>°/s magnitude</small></div>
-                <div><span>Streaming</span><strong id="phoneRate">0</strong><small>samples/s</small></div>
+                <div><span>Accel X</span><strong id="phoneAx">0.00</strong><small>m/s²</small></div>
+                <div><span>Accel Y</span><strong id="phoneAy">0.00</strong><small>m/s²</small></div>
+                <div><span>Accel Z</span><strong id="phoneAz">0.00</strong><small>m/s²</small></div>
+                <div><span>Gyro X</span><strong id="phoneGx">0.00</strong><small>°/s</small></div>
+                <div><span>Gyro Y</span><strong id="phoneGy">0.00</strong><small>°/s</small></div>
+                <div><span>Gyro Z</span><strong id="phoneGz">0.00</strong><small>°/s</small></div>
             </div>
         </section>
 
@@ -235,14 +245,15 @@
             <strong>Hold on securely.</strong>
             <p>Use small, controlled movements and stay clear of other people and equipment.</p>
         </section>
+
+        <aside class="data-notice phone-data-notice">
+            <strong>Your data is not saved on this phone.</strong>
+            <p>Live readings are held only while this tab is open. Readings already sent remain temporarily in the computer tab until that tab is closed or refreshed.</p>
+        </aside>
     </section>
 </main>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-
-<footer>
-    <span>Sensor data is processed in your browsers</span>
-</footer>
 
 <!-- Pinned prototype dependencies. The application degrades to simulator/manual-link mode if either CDN is unavailable. -->
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js"></script>
