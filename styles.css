@@ -263,12 +263,6 @@ h2 {
     font-size: 0.88rem;
 }
 
-.link-copy-row {
-    margin-top: 16px;
-    display: flex;
-    gap: 8px;
-}
-
 input,
 select {
     width: 100%;
@@ -278,11 +272,6 @@ select {
     border: 1px solid #cbd5e1;
     border-radius: 10px;
     background: white;
-}
-
-input[readonly] {
-    color: #5b6572;
-    background: #f8fafc;
 }
 
 label {

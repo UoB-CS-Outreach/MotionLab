@@ -40,18 +40,15 @@
                         <div class="qr-placeholder">Creating<br>QR code...</div>
                     </div>
                     <div class="pair-copy">
-                        <p><strong>Scan with the phone's normal camera.</strong> No app or account is needed.</p>
+                        <p><strong>Scan with your phone's camera.</strong></p>
+                        <p>No app or account is needed.</p>
                         <p class="muted">The phone will open a sensor page and ask permission before sharing readings.</p>
-                        <div class="link-copy-row">
-                            <input id="phoneLink" type="text" readonly aria-label="Phone connection link" value="Preparing link...">
-                            <button class="button secondary compact" id="copyLinkBtn" type="button" disabled>Copy</button>
-                        </div>
                         <button class="text-button" id="newSessionBtn" type="button">Create a new pairing session</button>
                     </div>
                 </div>
 
                 <details class="demo-box">
-                    <summary>No phone yet? Use the signal simulator</summary>
+                    <summary>No phone? Use the signal simulator</summary>
                     <p>The simulator lets you test the entire activity on this computer.</p>
                     <div class="inline-controls">
                         <label>
@@ -81,15 +78,15 @@
                     <div><span>Accel X</span><strong id="desktopAx">0.00</strong><small>m/s²</small></div>
                     <div><span>Accel Y</span><strong id="desktopAy">0.00</strong><small>m/s²</small></div>
                     <div><span>Accel Z</span><strong id="desktopAz">0.00</strong><small>m/s²</small></div>
-                    <div><span>Gyro α</span><strong id="desktopGx">0.00</strong><small>°/s</small></div>
-                    <div><span>Gyro β</span><strong id="desktopGy">0.00</strong><small>°/s</small></div>
-                    <div><span>Gyro γ</span><strong id="desktopGz">0.00</strong><small>°/s</small></div>
+                    <div><span>Gyro X</span><strong id="desktopGx">0.00</strong><small>°/s</small></div>
+                    <div><span>Gyro Y</span><strong id="desktopGy">0.00</strong><small>°/s</small></div>
+                    <div><span>Gyro Z</span><strong id="desktopGz">0.00</strong><small>°/s</small></div>
                 </div>
 
                 <div class="chart-grid">
                     <figure>
                         <figcaption>
-                            Acceleration including gravity
+                            Acceleration
                             <span class="legend"><i class="x"></i>X <i class="y"></i>Y <i class="z"></i>Z</span>
                         </figcaption>
                         <canvas id="accelChart" aria-label="Live acceleration line chart"></canvas>
@@ -97,7 +94,7 @@
                     <figure>
                         <figcaption>
                             Gyroscope rotation rate
-                            <span class="legend"><i class="x"></i>α <i class="y"></i>β <i class="z"></i>γ</span>
+                            <span class="legend"><i class="x"></i>X <i class="y"></i>Y <i class="z"></i>Z</span>
                         </figcaption>
                         <canvas id="gyroChart" aria-label="Live gyroscope line chart"></canvas>
                     </figure>
@@ -156,7 +153,7 @@
                     <div class="chart-grid recorded-chart-grid">
                         <figure>
                             <figcaption>
-                                Acceleration including gravity
+                                Acceleration
                                 <span class="legend"><i class="x"></i>X <i class="y"></i>Y <i class="z"></i>Z</span>
                             </figcaption>
                             <canvas id="recordedAccelChart" aria-label="Recorded acceleration line chart"></canvas>
@@ -164,7 +161,7 @@
                         <figure>
                             <figcaption>
                                 Gyroscope rotation rate
-                                <span class="legend"><i class="x"></i>α <i class="y"></i>β <i class="z"></i>γ</span>
+                                <span class="legend"><i class="x"></i>X <i class="y"></i>Y <i class="z"></i>Z</span>
                             </figcaption>
                             <canvas id="recordedGyroChart" aria-label="Recorded gyroscope line chart"></canvas>
                         </figure>

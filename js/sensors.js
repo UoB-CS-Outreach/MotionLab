@@ -70,9 +70,12 @@ export class PhoneMotionSensor {
             ax: valueOrZero(acceleration.x),
             ay: valueOrZero(acceleration.y),
             az: valueOrZero(acceleration.z),
-            gx: valueOrZero(rotation.alpha),
-            gy: valueOrZero(rotation.beta),
-            gz: valueOrZero(rotation.gamma),
+            // DeviceMotion names rotations alpha/beta/gamma. They correspond
+            // to rotations about device Z/X/Y respectively, so expose them to
+            // the activity as the more familiar X/Y/Z axes.
+            gx: valueOrZero(rotation.beta),
+            gy: valueOrZero(rotation.gamma),
+            gz: valueOrZero(rotation.alpha),
             interval: valueOrZero(event.interval),
             source: event.accelerationIncludingGravity ? "device-motion-with-gravity" : "device-motion-linear",
         });

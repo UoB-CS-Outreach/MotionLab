@@ -76,8 +76,6 @@ function initDesktop() {
     function startPairingSession() {
         state.bridge?.destroy();
         $("qrCode").innerHTML = '<div class="qr-placeholder">Creating<br>QR code...</div>';
-        $("phoneLink").value = "Preparing link...";
-        $("copyLinkBtn").disabled = true;
 
         state.bridge = new PeerBridge({
             role: "desktop",
@@ -104,8 +102,6 @@ function initDesktop() {
         url.searchParams.set("mode", "phone");
         url.searchParams.set("peer", peerId);
         const link = url.toString();
-        $("phoneLink").value = link;
-        $("copyLinkBtn").disabled = false;
         $("qrCode").innerHTML = "";
 
         if (typeof window.QRCode === "function") {
@@ -118,7 +114,7 @@ function initDesktop() {
                 correctLevel: window.QRCode.CorrectLevel.M,
             });
         } else {
-            $("qrCode").innerHTML = '<div class="qr-placeholder">QR library unavailable.<br>Copy the link instead.</div>';
+            $("qrCode").innerHTML = '<div class="qr-placeholder">QR code generation is unavailable.<br>Refresh and try again.</div>';
         }
 
         if (["localhost", "127.0.0.1"].includes(location.hostname)) {
@@ -387,7 +383,7 @@ function initDesktop() {
     }
 
     function downloadCsv() {
-        const header = ["recording_id", "label", "sample", "time_ms", "device_time_ms", "accel_x", "accel_y", "accel_z", "gyro_alpha", "gyro_beta", "gyro_gamma", "source"];
+        const header = ["recording_id", "label", "sample", "time_ms", "device_time_ms", "accel_x", "accel_y", "accel_z", "gyro_x", "gyro_y", "gyro_z", "source"];
         const rows = [header];
         state.recordings.forEach((recording, recordingIndex) => {
             recording.samples.forEach((sample, sampleIndex) => rows.push([
@@ -439,17 +435,6 @@ function initDesktop() {
             else setStatus($("desktopConnectionStatus"), "waiting", "Waiting for phone");
         }
     }
-
-    $("copyLinkBtn").addEventListener("click", async () => {
-        try {
-            await navigator.clipboard.writeText($("phoneLink").value);
-            showToast("Phone link copied.");
-        } catch {
-            $("phoneLink").select();
-            document.execCommand("copy");
-            showToast("Phone link selected for copying.");
-        }
-    });
 
     $("newSessionBtn").addEventListener("click", startPairingSession);
     $("toggleDemoBtn").addEventListener("click", () => state.simulator.running ? stopSimulator() : startSimulator());
