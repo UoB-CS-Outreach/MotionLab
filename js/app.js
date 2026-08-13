@@ -1,8 +1,8 @@
 import {SignalChart} from "./chart.js";
 import {PeerBridge} from "./connection.js";
-import {datasetReadiness, fitKnn, leaveOneTrialOut, predictKnn} from "./model.js";
 import {PhoneMotionSensor} from "./sensors.js";
 import {MotionSimulator} from "./simulator.js";
+import {PythonMotionModel} from "./python-model.js";
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -34,6 +34,19 @@ function formatReading(value) {
     return limited.toFixed(2);
 }
 
+function datasetReadiness(recordings) {
+    const counts = new Map();
+    for (const recording of recordings ?? []) {
+        counts.set(recording.label, (counts.get(recording.label) ?? 0) + 1);
+    }
+    return {
+        ready: counts.size >= 2 && [...counts.values()].every(count => count >= 2),
+        counts,
+        labels: counts.size,
+        recordings: recordings?.length ?? 0,
+    };
+}
+
 if (mode === "phone") {
     initPhone();
 } else {
@@ -53,7 +66,10 @@ function initDesktop() {
         recording: null,
         captureBusy: false,
         viewedRecordingId: null,
-        model: null,
+        pythonModel: new PythonMotionModel(),
+        modelEngineReady: false,
+        modelLoadError: false,
+        modelTrained: false,
         lastSampleAt: 0,
         lastPredictionAt: 0,
         source: "none",
@@ -152,7 +168,7 @@ function initDesktop() {
         $("sampleRate").textContent = `${Math.round(state.rateTimes.length / 2)} samples/s`;
         updateRecordButton();
 
-        if (state.model && now - state.lastPredictionAt >= 350) {
+        if (state.modelTrained && now - state.lastPredictionAt >= 350) {
             state.lastPredictionAt = now;
             updatePrediction();
         }
@@ -172,23 +188,25 @@ function initDesktop() {
     }
 
     function updateRecordButton() {
-        $("recordBtn").disabled = state.captureBusy || !streamIsFresh();
+        const unavailable = state.captureBusy || !streamIsFresh();
+        $("recordBtn").disabled = unavailable;
+        $("testPredictionBtn").disabled = unavailable || !state.modelTrained;
     }
 
     function updatePrediction() {
-        if (!state.model) return;
+        if (!state.modelTrained) return;
         const now = Date.now();
-        const windowSamples = state.liveBuffer.filter(sample => now - sample.t <= 2200);
+        const windowSamples = state.liveBuffer.filter(sample => now - sample.t <= 3000);
         const duration = windowSamples.length > 1 ? windowSamples.at(-1).t - windowSamples[0].t : 0;
-        if (windowSamples.length < 20 || duration < 1400) {
+        if (windowSamples.length < 30 || duration < 2500) {
             $("predictionLabel").textContent = "Waiting for movement...";
-            $("predictionConfidence").textContent = "Collecting a two-second window";
+            $("predictionConfidence").textContent = "Collecting a three-second window";
             $("confidenceBar").style.width = "0%";
             return;
         }
 
         try {
-            const prediction = predictKnn(state.model, windowSamples);
+            const prediction = state.pythonModel.predict(windowSamples);
             const confidencePercent = Math.round(prediction.confidence * 100);
             $("predictionLabel").textContent = prediction.label;
             $("predictionConfidence").textContent = `${confidencePercent}% of neighbour vote`;
@@ -236,7 +254,7 @@ function initDesktop() {
             const elapsed = Date.now() - state.recording.startedAt;
             const percentage = Math.min(100, (elapsed / duration) * 100);
             $("recordProgressBar").style.width = `${percentage}%`;
-            $("recordProgressText").textContent = percentage < 100 ? "Move now!" : "Finishing...";
+            $("recordProgressText").textContent = percentage < 100 ? "Recording..." : "Finishing...";
         }, 80);
 
         await wait(duration);
@@ -284,7 +302,7 @@ function initDesktop() {
         $("clearDataBtn").disabled = state.recordings.length === 0;
         $("undoRecordingBtn").disabled = state.recordings.length === 0;
         $("deleteRecordingBtn").disabled = state.recordings.length === 0;
-        $("trainBtn").disabled = !readiness.ready;
+        $("trainBtn").disabled = !readiness.ready || !state.modelEngineReady;
 
         $("datasetSummary").innerHTML = [...readiness.counts]
             .map(([label, count]) => `
@@ -296,7 +314,11 @@ function initDesktop() {
 
         renderRecordingViewer();
 
-        if (readiness.ready) {
+        if (state.modelLoadError) {
+            $("trainingHint").textContent = "Python could not load. Refresh the page and check the internet connection.";
+        } else if (readiness.ready && !state.modelEngineReady) {
+            $("trainingHint").textContent = "Your data is ready. Waiting for Python to finish loading.";
+        } else if (readiness.ready) {
             $("trainingHint").textContent = `${readiness.recordings} recordings across ${readiness.labels} movements are ready.`;
         } else if (readiness.labels < 2) {
             $("trainingHint").textContent = "Collect at least two recordings for each of two movement labels.";
@@ -342,34 +364,132 @@ function initDesktop() {
     }
 
     function invalidateModel() {
-        state.model = null;
-        $("modelState").className = "model-state";
-        $("modelState").textContent = "Not trained";
+        state.pythonModel.reset();
+        state.modelTrained = false;
+        $("modelState").className = state.modelLoadError ? "model-state error" : "model-state";
+        $("modelState").textContent = state.modelLoadError
+            ? "Python unavailable"
+            : state.modelEngineReady ? "Not trained" : "Loading Python";
         $("modelResults").hidden = true;
+        $("testPredictionPanel").hidden = true;
+        $("testPredictionResult").hidden = true;
+        updateRecordButton();
     }
 
     function trainModel() {
         const readiness = datasetReadiness(state.recordings);
-        if (!readiness.ready) return;
+        if (!readiness.ready || !state.modelEngineReady) return;
 
         try {
-            const evaluation = leaveOneTrialOut(state.recordings, 3);
-            state.model = fitKnn(state.recordings, 3);
+            const result = state.pythonModel.trainAndEvaluate(state.recordings, 3);
+            const evaluation = result.evaluation;
+            state.modelTrained = true;
             $("modelState").className = "model-state ready";
             $("modelState").textContent = "Model trained";
             $("modelResults").hidden = false;
+            $("testPredictionPanel").hidden = false;
             $("modelAccuracy").textContent = evaluation.accuracy === null ? "—" : `${Math.round(evaluation.accuracy * 100)}%`;
             $("accuracyDetail").textContent = evaluation.tested
                 ? `${evaluation.correct} of ${evaluation.tested} held-out trials correct`
                 : "Add more trials to evaluate";
             $("predictionLabel").textContent = "Waiting for movement...";
-            $("predictionConfidence").textContent = "Collecting a two-second window";
+            $("predictionConfidence").textContent = "Collecting a three-second window";
             $("confidenceBar").style.width = "0%";
             showToast("Model trained. Try a movement without pressing record.");
+            updateRecordButton();
             updatePrediction();
         } catch (error) {
             showToast(error.message);
         }
+    }
+
+    async function recordTestPrediction() {
+        if (state.captureBusy || !state.modelTrained || !streamIsFresh()) {
+            showToast("Train the model and start the sensor stream before recording a test movement.");
+            return;
+        }
+
+        state.captureBusy = true;
+        updateRecordButton();
+        $("testPredictionResult").hidden = true;
+        $("testPredictionBtn").textContent = "Preparing...";
+        $("testProgress").hidden = false;
+        $("testProgressBar").style.width = "0%";
+
+        for (let count = 3; count >= 1; count -= 1) {
+            $("testProgressText").textContent = `Get ready: ${count}`;
+            await wait(650);
+            if (!streamIsFresh()) {
+                state.captureBusy = false;
+                finishTestPredictionUi(false);
+                showToast("The sensor stream stopped before the test began.");
+                return;
+            }
+        }
+
+        state.recording = {samples: [], startedAt: Date.now()};
+        $("testPredictionBtn").textContent = "Recording...";
+        const duration = 3000;
+        const progressTimer = window.setInterval(() => {
+            const elapsed = Date.now() - state.recording.startedAt;
+            const percentage = Math.min(100, (elapsed / duration) * 100);
+            $("testProgressBar").style.width = `${percentage}%`;
+            $("testProgressText").textContent = percentage < 100 ? "Recording..." : "Classifying...";
+        }, 80);
+
+        await wait(duration);
+        window.clearInterval(progressTimer);
+        const completed = state.recording;
+        state.recording = null;
+        state.captureBusy = false;
+
+        if (completed.samples.length < 15) {
+            finishTestPredictionUi(false);
+            showToast("Too few readings arrived. Please reconnect and try again.");
+            return;
+        }
+
+        try {
+            const prediction = state.pythonModel.predict(completed.samples);
+            const confidencePercent = Math.round(prediction.confidence * 100);
+            $("testPredictionLabel").textContent = prediction.label;
+            $("testPredictionConfidence").textContent = `${confidencePercent}% of neighbour vote`;
+            $("testPredictionResult").hidden = false;
+            finishTestPredictionUi(true);
+            showToast(`Recorded test predicted as “${prediction.label}”.`);
+        } catch (error) {
+            finishTestPredictionUi(false);
+            showToast(error.message);
+        }
+    }
+
+    function finishTestPredictionUi(success) {
+        $("testProgressBar").style.width = success ? "100%" : "0%";
+        $("testProgressText").textContent = success ? "Classified" : "Stopped";
+        window.setTimeout(() => {
+            $("testProgress").hidden = true;
+            $("testProgressBar").style.width = "0%";
+        }, 550);
+        $("testPredictionBtn").textContent = "Record test movement";
+        updateRecordButton();
+    }
+
+    async function initialisePythonModel() {
+        $("modelState").className = "model-state";
+        $("modelState").textContent = "Loading Python";
+        try {
+            await state.pythonModel.initialise();
+            state.modelEngineReady = true;
+            state.modelLoadError = false;
+            $("modelState").textContent = "Not trained";
+        } catch (error) {
+            state.modelLoadError = true;
+            $("modelState").className = "model-state error";
+            $("modelState").textContent = "Python unavailable";
+            showToast(error.message);
+        }
+        renderDataset();
+        updateRecordButton();
     }
 
     function escapeHtml(value) {
@@ -407,10 +527,13 @@ function initDesktop() {
         const labels = {still: "Still", shake: "Side-to-side shake", bounce: "Up-and-down bounce", circle: "Circle"};
         $("activityLabel").value = labels[$("demoPattern").value];
         $("customLabelWrap").hidden = true;
+        $("recordControls").classList.remove("has-custom");
     });
     $("activityLabel").addEventListener("change", () => {
-        $("customLabelWrap").hidden = $("activityLabel").value !== "custom";
-        if (!$("customLabelWrap").hidden) $("customLabel").focus();
+        const hasCustomLabel = $("activityLabel").value === "custom";
+        $("customLabelWrap").hidden = !hasCustomLabel;
+        $("recordControls").classList.toggle("has-custom", hasCustomLabel);
+        if (hasCustomLabel) $("customLabel").focus();
     });
     $("recordingViewerSelect").addEventListener("change", () => {
         state.viewedRecordingId = $("recordingViewerSelect").value;
@@ -418,6 +541,7 @@ function initDesktop() {
     });
     $("recordBtn").addEventListener("click", recordTrial);
     $("trainBtn").addEventListener("click", trainModel);
+    $("testPredictionBtn").addEventListener("click", recordTestPrediction);
     $("deleteRecordingBtn").addEventListener("click", () => {
         const selectedIndex = state.recordings.findIndex(recording => recording.id === state.viewedRecordingId);
         if (selectedIndex < 0) return;
@@ -461,6 +585,7 @@ function initDesktop() {
     });
 
     renderDataset();
+    initialisePythonModel();
     startPairingSession();
 }
 
