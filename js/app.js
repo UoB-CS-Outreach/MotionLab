@@ -15,11 +15,11 @@ const UNKNOWN_CONFIDENCE_THRESHOLD = 0.6;
 const CLASSIFIER_DETAILS = {
     summary: {
         label: "Summary statistics + k-nearest neighbours",
-        description: "Compares overall signal properties. Fast and suitable for this short activity.",
+        description: "Your movement names tell the model the correct answer for each training recording. Python gives every recording 90 equally spaced time points, then replaces each signal with summary values such as its average, variation, range and rate of change. The three closest examples vote, with closer examples having more influence. This is the faster option.",
     },
     dtw: {
         label: "Dynamic Time Warping + k-nearest neighbours",
-        description: "Compares full signal shapes and allows for small differences in timing.",
+        description: "Your movement names tell the model the correct answer for each training recording. Python gives every recording 90 equally spaced time points. Dynamic Time Warping compares the full six sensor signals and lines up similar parts that happened slightly earlier or later. The three closest examples vote, with closer examples having more influence. This is slower but more tolerant of timing differences.",
     },
 };
 
@@ -85,6 +85,12 @@ const PATTERN_BY_LABEL = {
     "Side-to-side": "shake",
     "Up-and-down": "bounce",
     "Circle": "circle",
+};
+const LABEL_BY_PATTERN = {
+    still: "Still",
+    shake: "Side-to-side",
+    bounce: "Up-and-down",
+    circle: "Circle",
 };
 
 if (mode === "phone") {
@@ -383,6 +389,20 @@ function initDesktop() {
         });
     }
 
+    function setCustomMovementAvailable(available) {
+        const card = document.querySelector('.movement-card[data-label="custom"]');
+        const option = $("activityLabel").querySelector('option[value="custom"]');
+        card.classList.toggle("is-simulator-disabled", !available);
+        card.setAttribute("aria-disabled", String(!available));
+        card.title = available ? "" : "Custom movements need live phone sensor data.";
+        option.disabled = !available;
+
+        if (!available && $("activityLabel").value === "custom") {
+            $("activityLabel").value = LABEL_BY_PATTERN[$("demoPattern").value];
+            $("activityLabel").dispatchEvent(new Event("change"));
+        }
+    }
+
     function renderDataset() {
         const readiness = datasetReadiness(state.recordings);
         $("datasetEmpty").hidden = state.recordings.length > 0;
@@ -619,6 +639,7 @@ function initDesktop() {
 
     function startSimulator() {
         state.source = "simulator";
+        setCustomMovementAvailable(false);
         state.simulator.setPattern($("demoPattern").value);
         state.simulator.start();
         $("toggleDemoBtn").textContent = "Stop simulator";
@@ -628,6 +649,7 @@ function initDesktop() {
 
     function stopSimulator(updateStatus = true) {
         state.simulator.stop();
+        setCustomMovementAvailable(true);
         $("toggleDemoBtn").textContent = "Start simulator";
         if (updateStatus) {
             if (state.bridge?.connected) setStatus($("desktopConnectionStatus"), "connected", "Phone connected");
@@ -639,8 +661,7 @@ function initDesktop() {
     $("toggleDemoBtn").addEventListener("click", () => state.simulator.running ? stopSimulator() : startSimulator());
     $("demoPattern").addEventListener("change", () => {
         state.simulator.setPattern($("demoPattern").value);
-        const labels = {still: "Still", shake: "Side-to-side", bounce: "Up-and-down", circle: "Circle"};
-        $("activityLabel").value = labels[$("demoPattern").value];
+        $("activityLabel").value = LABEL_BY_PATTERN[$("demoPattern").value];
         $("customLabelWrap").hidden = true;
         $("recordControls").classList.remove("has-custom");
         syncMovementGuide($("activityLabel").value);
@@ -659,6 +680,10 @@ function initDesktop() {
     });
     document.querySelectorAll(".movement-card").forEach(card => {
         card.addEventListener("click", () => {
+            if (card.getAttribute("aria-disabled") === "true") {
+                showToast("Custom movements need a connected phone rather than the simulator.");
+                return;
+            }
             $("activityLabel").value = card.dataset.label;
             $("activityLabel").dispatchEvent(new Event("change"));
         });

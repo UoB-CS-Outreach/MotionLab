@@ -161,6 +161,17 @@
                             <strong>Circle</strong>
                             <span>Hold the screen facing you. Draw small circles in the air.</span>
                         </button>
+
+                        <button class="movement-card custom-movement-card" type="button" data-label="custom"
+                                aria-pressed="false" aria-controls="activityLabel">
+                            <span class="movement-visual movement-custom" aria-hidden="true">
+                                <span class="custom-motion-path"></span>
+                                <span class="motion-phone"></span>
+                                <span class="custom-mark">?</span>
+                            </span>
+                            <strong>Custom movement</strong>
+                            <span>Invent a repeatable movement and give it your own name.</span>
+                        </button>
                     </div>
                 </section>
 
@@ -239,14 +250,23 @@
                     </div>
                     <p class="panel-intro">Once you have recorded three examples of at least two movements, train the model and check how well it recognises them.</p>
 
-                    <label class="classifier-choice">
-                        Classifier
+                    <div class="classifier-choice">
+                        <div class="classifier-choice-heading">
+                            <label for="classifierSelect">Classifier</label>
+                            <span class="info-tooltip classifier-tooltip">
+                                <button class="info-tooltip-trigger" type="button"
+                                        aria-label="Explain how this classifier learns"
+                                        aria-describedby="classifierDescription">?</button>
+                                <span class="info-tooltip-content" id="classifierDescription" role="tooltip">
+                                    Your movement names tell the model the correct answer for each training recording. Python gives every recording 90 equally spaced time points, then replaces each signal with summary values such as its average, variation, range and rate of change. The three closest examples vote, with closer examples having more influence. This is the faster option.
+                                </span>
+                            </span>
+                        </div>
                         <select id="classifierSelect">
                             <option value="summary" selected>Summary statistics + k-nearest neighbours</option>
                             <option value="dtw">Dynamic Time Warping + k-nearest neighbours</option>
                         </select>
-                        <small id="classifierDescription">Compares overall signal properties. Fast and suitable for this short activity.</small>
-                    </label>
+                    </div>
 
                     <button class="button primary wide" id="trainBtn" type="button" disabled>Train activity model</button>
                     <p class="trainingHint muted" id="trainingHint">Collect three recordings for each of at least two movements.</p>
@@ -270,12 +290,6 @@
                         </div>
                     </div>
 
-                    <details class="explain-box">
-                        <summary>How is the model learning?</summary>
-                        <p>You teach it by providing examples and the correct movement names. Python first uses linear interpolation to give every recording 90 equally spaced time points.</p>
-                        <p>Summary statistics represents each recording using properties such as its average, variation and rate of change. Dynamic Time Warping instead compares the full signal shapes and lines up parts that happened slightly earlier or later.</p>
-                        <p>The accuracy score uses leave-one-recording-out cross-validation: it hides one complete recording at a time and asks the model to predict it from the others.</p>
-                    </details>
                 </section>
 
                 <section class="panel test-panel" aria-labelledby="testModelHeading">
@@ -300,14 +314,23 @@
                         </div>
 
                         <div class="unknown-option">
-                            <label class="unknown-toggle" for="unknownPredictionToggle">
-                                <input id="unknownPredictionToggle" type="checkbox" checked>
-                                <span class="toggle-track" aria-hidden="true"><span></span></span>
-                                <span class="unknown-copy">
-                                    <strong>Allow “Unknown”</strong>
-                                    <small>Used when the highest movement receives less than 60% of the neighbour vote.</small>
+                            <div class="unknown-option-row">
+                                <label class="unknown-toggle" for="unknownPredictionToggle">
+                                    <input id="unknownPredictionToggle" type="checkbox" checked>
+                                    <span class="toggle-track" aria-hidden="true"><span></span></span>
+                                    <span class="unknown-copy">
+                                        <strong>Allow “Unknown”</strong>
+                                    </span>
+                                </label>
+                                <span class="info-tooltip unknown-tooltip">
+                                    <button class="info-tooltip-trigger" type="button"
+                                            aria-label="Explain Unknown predictions"
+                                            aria-describedby="unknownTooltip">?</button>
+                                    <span class="info-tooltip-content" id="unknownTooltip" role="tooltip">
+                                        “Unknown” is a confidence rule, not a fifth movement learned by the model. When enabled, the app shows “Unknown” if no movement receives at least 60% of the distance-weighted neighbour vote. Turning it off always shows the trained movement with the highest vote.
+                                    </span>
                                 </span>
-                            </label>
+                            </div>
                         </div>
 
                         <section class="test-prediction">
@@ -328,11 +351,6 @@
                                 <small id="testPredictionConfidence"></small>
                             </div>
                         </section>
-
-                        <details class="explain-box">
-                            <summary>What does “Unknown” mean?</summary>
-                            <p>“Unknown” is a confidence rule, not a fifth learned movement. When enabled, it replaces predictions whose highest neighbour vote is below 60%.</p>
-                        </details>
                     </div>
                 </section>
             </div>
