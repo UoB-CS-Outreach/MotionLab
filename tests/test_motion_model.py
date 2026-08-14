@@ -83,15 +83,24 @@ class MotionModelTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "at least 2.5 seconds"):
             motion_model.extract_features(samples)
 
-    def test_knn_separates_all_four_synthetic_movements(self) -> None:
-        model = motion_model.fit_knn(RECORDINGS, 3)
+    def test_dtw_reduces_the_cost_of_a_temporal_shift(self) -> None:
+        first = [[1.0 if 30 <= index < 45 else 0.0] for index in range(90)]
+        shifted = [[1.0 if 40 <= index < 55 else 0.0] for index in range(90)]
+        pointwise_distance = math.sqrt(
+            sum((left[0] - right[0]) ** 2 for left, right in zip(first, shifted))
+            / len(first)
+        )
+        self.assertLess(motion_model.dtw_distance(first, shifted), pointwise_distance)
+
+    def test_dtw_knn_separates_all_four_synthetic_movements(self) -> None:
+        model = motion_model.fit_dtw_knn(RECORDINGS, 3)
         for label, phase in (
             ("Still", 0.5),
             ("Side-to-side", 0.5),
             ("Up-and-down", 0.5),
             ("Circle", 0.5),
         ):
-            prediction = motion_model.predict_knn(
+            prediction = motion_model.predict_dtw_knn(
                 model, synthetic_trial(label, phase)["samples"]
             )
             self.assertEqual(prediction["label"], label)
@@ -106,14 +115,21 @@ class MotionModelTests(unittest.TestCase):
         import json
 
         training = motion_model.train_and_evaluate_json(json.dumps(RECORDINGS), 3)
-        self.assertEqual(
-            json.loads(training)["algorithm"], "knn-resampled-motion-features"
-        )
+        self.assertEqual(json.loads(training)["algorithm"], "summary-statistics-knn")
+        self.assertEqual(json.loads(training)["classifier"], "summary")
 
         prediction = motion_model.predict_json(
             json.dumps(synthetic_trial("Circle", 0.5)["samples"])
         )
         self.assertEqual(json.loads(prediction)["label"], "Circle")
+
+        dtw_training = motion_model.train_and_evaluate_json(
+            json.dumps(RECORDINGS), 3, "dtw"
+        )
+        self.assertEqual(
+            json.loads(dtw_training)["algorithm"], "dtw-knn-resampled-series"
+        )
+        self.assertEqual(json.loads(dtw_training)["classifier"], "dtw")
 
         motion_model.reset_model()
         with self.assertRaisesRegex(ValueError, "Train a model"):

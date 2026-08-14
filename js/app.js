@@ -11,6 +11,16 @@ const wait = milliseconds => new Promise(resolve => window.setTimeout(resolve, m
 const MIN_RECORDING_SAMPLES = 30;
 const MIN_RECORDING_DURATION_MS = 2500;
 const UNKNOWN_CONFIDENCE_THRESHOLD = 0.6;
+const CLASSIFIER_DETAILS = {
+    summary: {
+        label: "Summary statistics + k-NN",
+        description: "Compares overall signal properties. Fast and suitable for this short activity.",
+    },
+    dtw: {
+        label: "Dynamic Time Warping + k-NN",
+        description: "Compares full signal shapes and allows for small differences in timing.",
+    },
+};
 
 let toastTimer;
 function showToast(message) {
@@ -97,6 +107,7 @@ function initDesktop() {
         pythonModel: new PythonMotionModel(),
         modelEngineReady: false,
         modelLoadError: false,
+        modelTraining: false,
         modelTrained: false,
         lastTestPrediction: null,
         lastSampleAt: 0,
@@ -217,13 +228,15 @@ function initDesktop() {
     }
 
     function updateRecordButton() {
-        const unavailable = state.captureBusy || !streamIsFresh();
+        const unavailable = state.captureBusy || state.modelTraining || !streamIsFresh();
         $("recordBtn").disabled = unavailable;
         $("testPredictionBtn").disabled = unavailable || !state.modelTrained;
         const readiness = datasetReadiness(state.recordings);
         $("trainBtn").disabled = state.captureBusy
+            || state.modelTraining
             || !readiness.ready
             || !state.modelEngineReady;
+        $("classifierSelect").disabled = state.captureBusy || state.modelTraining;
     }
 
     function updatePrediction() {
@@ -284,7 +297,7 @@ function initDesktop() {
     }
 
     async function recordTrial() {
-        if (state.captureBusy || !streamIsFresh()) {
+        if (state.captureBusy || state.modelTraining || !streamIsFresh()) {
             showToast("Start the phone sensors or simulator before recording.");
             return;
         }
@@ -377,8 +390,10 @@ function initDesktop() {
         $("undoRecordingBtn").disabled = state.recordings.length === 0;
         $("deleteRecordingBtn").disabled = state.recordings.length === 0;
         $("trainBtn").disabled = state.captureBusy
+            || state.modelTraining
             || !readiness.ready
             || !state.modelEngineReady;
+        $("classifierSelect").disabled = state.captureBusy || state.modelTraining;
 
         $("datasetSummary").innerHTML = [...readiness.counts]
             .map(([label, count]) => `
@@ -456,12 +471,22 @@ function initDesktop() {
         updateRecordButton();
     }
 
-    function trainModel() {
+    async function trainModel() {
         const readiness = datasetReadiness(state.recordings);
-        if (!readiness.ready || !state.modelEngineReady) return;
+        if (!readiness.ready || !state.modelEngineReady || state.modelTraining) return;
+
+        const classifier = $("classifierSelect").value;
+        state.modelTraining = true;
+        $("trainBtn").textContent = "Training...";
+        updateRecordButton();
+        await wait(20);
 
         try {
-            const result = state.pythonModel.trainAndEvaluate(state.recordings, 3);
+            const result = state.pythonModel.trainAndEvaluate(
+                state.recordings,
+                3,
+                classifier,
+            );
             const evaluation = result.evaluation;
             state.modelTrained = true;
             state.lastTestPrediction = null;
@@ -471,6 +496,7 @@ function initDesktop() {
             $("testPredictionPanel").hidden = false;
             $("testModelLocked").hidden = true;
             $("modelAccuracy").textContent = evaluation.accuracy === null ? "—" : `${Math.round(evaluation.accuracy * 100)}%`;
+            $("modelMethod").textContent = CLASSIFIER_DETAILS[classifier].label;
             $("accuracyDetail").textContent = evaluation.tested
                 ? `${evaluation.correct} of ${evaluation.tested} held-out trials correct`
                 : "Add more trials to evaluate";
@@ -482,6 +508,10 @@ function initDesktop() {
             updatePrediction();
         } catch (error) {
             showToast(error.message);
+        } finally {
+            state.modelTraining = false;
+            $("trainBtn").textContent = "Train activity model";
+            updateRecordButton();
         }
     }
 
@@ -636,6 +666,11 @@ function initDesktop() {
     $("unknownPredictionToggle").addEventListener("change", () => {
         if (state.modelTrained) updatePrediction();
         if (state.lastTestPrediction) renderTestPrediction(state.lastTestPrediction);
+    });
+    $("classifierSelect").addEventListener("change", () => {
+        const classifier = $("classifierSelect").value;
+        $("classifierDescription").textContent = CLASSIFIER_DETAILS[classifier].description;
+        if (state.modelTrained) invalidateModel();
     });
     $("recordBtn").addEventListener("click", recordTrial);
     $("trainBtn").addEventListener("click", trainModel);

@@ -35,12 +35,12 @@ export class PythonMotionModel {
         });
     }
 
-    trainAndEvaluate(recordings, requestedK = 3) {
+    trainAndEvaluate(recordings, requestedK = 3, classifier = "summary") {
         this.requireReady();
         const result = this.callJsonFunction(
             "train_and_evaluate_json",
             recordings,
-            requestedK,
+            [requestedK, classifier],
         );
         this.trained = true;
         return result;
@@ -57,17 +57,24 @@ export class PythonMotionModel {
         if (this.ready) this.pyodide.runPython("reset_model()");
     }
 
-    callJsonFunction(functionName, value, numberArgument = null) {
+    callJsonFunction(functionName, value, extraArguments = []) {
         const payloadName = "MOTION_LAB_JSON_PAYLOAD";
+        const argumentNames = extraArguments.map(
+            (_, index) => `MOTION_LAB_ARGUMENT_${index}`,
+        );
         this.pyodide.globals.set(payloadName, JSON.stringify(value));
+        extraArguments.forEach((argument, index) => {
+            this.pyodide.globals.set(argumentNames[index], argument);
+        });
         try {
-            const suffix = numberArgument === null ? "" : `, ${Number(numberArgument)}`;
+            const argumentsList = [payloadName, ...argumentNames].join(", ");
             const json = this.pyodide.runPython(
-                `${functionName}(${payloadName}${suffix})`,
+                `${functionName}(${argumentsList})`,
             );
             return JSON.parse(json);
         } finally {
             this.pyodide.globals.delete(payloadName);
+            argumentNames.forEach(name => this.pyodide.globals.delete(name));
         }
     }
 

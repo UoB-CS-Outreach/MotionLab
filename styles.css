@@ -976,6 +976,20 @@ canvas {
     display: block;
 }
 
+.classifier-choice {
+    margin-bottom: 13px;
+    padding: 13px;
+    border: 1px solid #d9e4ed;
+    border-radius: 12px;
+    background: #f8fafc;
+}
+
+.classifier-choice small {
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 500;
+}
+
 .accuracy-card,
 .prediction-card {
     min-height: 132px;
@@ -1009,6 +1023,12 @@ canvas {
 
 .accuracy-card small {
     color: #bdcede;
+}
+
+#modelMethod {
+    margin-bottom: 2px;
+    color: white;
+    font-weight: 750;
 }
 
 .prediction-card strong {

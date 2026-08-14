@@ -237,6 +237,15 @@
                     </div>
                     <p class="panel-intro">Once you have recorded two examples of at least two movements, train the model and check how well it recognises them.</p>
 
+                    <label class="classifier-choice">
+                        Classifier
+                        <select id="classifierSelect">
+                            <option value="summary" selected>Summary statistics + k-NN</option>
+                            <option value="dtw">Dynamic Time Warping + k-NN</option>
+                        </select>
+                        <small id="classifierDescription">Compares overall signal properties. Fast and suitable for this short activity.</small>
+                    </label>
+
                     <button class="button primary wide" id="trainBtn" type="button" disabled>Train activity model</button>
                     <p class="trainingHint muted" id="trainingHint">Collect at least two recordings for each of two movement labels.</p>
 
@@ -244,13 +253,15 @@
                         <div class="accuracy-card">
                             <span>Trial-by-trial test accuracy</span>
                             <strong id="modelAccuracy">—</strong>
+                            <small id="modelMethod"></small>
                             <small id="accuracyDetail"></small>
                         </div>
                     </div>
 
                     <details class="explain-box">
                         <summary>How is the model learning?</summary>
-                        <p>You teach it by providing examples and the correct movement names. Python first uses linear interpolation to give every recording 90 equally spaced time points. It then summarises the recording using numbers such as its average, variation and rate of change before finding the most similar examples.</p>
+                        <p>You teach it by providing examples and the correct movement names. Python first uses linear interpolation to give every recording 90 equally spaced time points.</p>
+                        <p>Summary statistics represents each recording using properties such as its average, variation and rate of change. Dynamic Time Warping instead compares the full signal shapes and lines up parts that happened slightly earlier or later.</p>
                         <p>The accuracy score checks the model by hiding one recording at a time and asking it to predict that recording from the others.</p>
                     </details>
                 </section>
