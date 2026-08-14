@@ -307,10 +307,25 @@
 
                     <div class="test-model-content" id="testPredictionPanel" hidden>
                         <div class="prediction-card" id="predictionCard">
-                            <span>Live prediction</span>
-                            <strong id="predictionLabel">Waiting for movement...</strong>
-                            <div class="confidence-track" aria-hidden="true"><span id="confidenceBar"></span></div>
-                            <small id="predictionConfidence">Collecting a three-second window</small>
+                            <div class="movement-visual prediction-visual movement-waiting" id="livePredictionVisual"
+                                 role="img" aria-label="Waiting for a live prediction">
+                                <span class="desk-line"></span>
+                                <span class="motion-arrow horizontal"></span>
+                                <span class="motion-arrow vertical"></span>
+                                <span class="motion-loop"></span>
+                                <span class="custom-motion-path"></span>
+                                <span class="motion-phone"></span>
+                                <span class="still-mark">STILL</span>
+                                <span class="custom-mark">?</span>
+                                <span class="unknown-mark">?</span>
+                                <span class="prediction-waiting-mark">•••</span>
+                            </div>
+                            <div class="prediction-card-copy">
+                                <span>Live prediction</span>
+                                <strong id="predictionLabel">Waiting for movement...</strong>
+                                <div class="confidence-track" aria-hidden="true"><span id="confidenceBar"></span></div>
+                                <small id="predictionConfidence">Collecting a three-second window</small>
+                            </div>
                         </div>
 
                         <div class="unknown-option">
@@ -346,9 +361,43 @@
                                 <strong id="testProgressText">Get ready...</strong>
                             </div>
                             <div class="test-prediction-result" id="testPredictionResult" hidden>
-                                <span>Predicted movement</span>
-                                <strong id="testPredictionLabel">—</strong>
-                                <small id="testPredictionConfidence"></small>
+                                <div class="movement-visual prediction-visual movement-waiting" id="testPredictionVisual"
+                                     role="img" aria-label="Waiting for a recorded prediction">
+                                    <span class="desk-line"></span>
+                                    <span class="motion-arrow horizontal"></span>
+                                    <span class="motion-arrow vertical"></span>
+                                    <span class="motion-loop"></span>
+                                    <span class="custom-motion-path"></span>
+                                    <span class="motion-phone"></span>
+                                    <span class="still-mark">STILL</span>
+                                    <span class="custom-mark">?</span>
+                                    <span class="unknown-mark">?</span>
+                                    <span class="prediction-waiting-mark">•••</span>
+                                </div>
+                                <div class="test-prediction-result-copy">
+                                    <span>Predicted movement</span>
+                                    <strong id="testPredictionLabel">—</strong>
+                                    <small id="testPredictionConfidence"></small>
+                                </div>
+                            </div>
+                            <div class="test-recording-series" id="testRecordingSeries" hidden>
+                                <div class="chart-grid recorded-chart-grid">
+                                    <figure>
+                                        <figcaption>
+                                            Acceleration
+                                            <span class="legend"><i class="x"></i>X <i class="y"></i>Y <i class="z"></i>Z</span>
+                                        </figcaption>
+                                        <canvas id="testAccelChart" aria-label="Recorded test acceleration line chart"></canvas>
+                                    </figure>
+                                    <figure>
+                                        <figcaption>
+                                            Gyroscope rotation rate
+                                            <span class="legend"><i class="x"></i>X <i class="y"></i>Y <i class="z"></i>Z</span>
+                                        </figcaption>
+                                        <canvas id="testGyroChart" aria-label="Recorded test gyroscope line chart"></canvas>
+                                    </figure>
+                                </div>
+                                <p class="recording-meta" id="testRecordingMeta"></p>
                             </div>
                         </section>
                     </div>

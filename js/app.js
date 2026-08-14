@@ -92,6 +92,22 @@ const LABEL_BY_PATTERN = {
     bounce: "Up-and-down",
     circle: "Circle",
 };
+const PREDICTION_VISUAL_BY_LABEL = {
+    "Still": "movement-still",
+    "Side-to-side": "movement-horizontal",
+    "Up-and-down": "movement-vertical",
+    "Circle": "movement-circle",
+    "Unknown": "movement-unknown",
+};
+const PREDICTION_VISUAL_CLASSES = [
+    "movement-still",
+    "movement-horizontal",
+    "movement-vertical",
+    "movement-circle",
+    "movement-custom",
+    "movement-unknown",
+    "movement-waiting",
+];
 
 if (mode === "phone") {
     initPhone();
@@ -127,6 +143,8 @@ function initDesktop() {
     const gyroscopeChart = new SignalChart($("gyroChart"), ["gx", "gy", "gz"], {minimumRange: 90});
     const recordedAccelerationChart = new SignalChart($("recordedAccelChart"), ["ax", "ay", "az"], {minimumRange: 12, maxPoints: 1000, fitWidth: true});
     const recordedGyroscopeChart = new SignalChart($("recordedGyroChart"), ["gx", "gy", "gz"], {minimumRange: 90, maxPoints: 1000, fitWidth: true});
+    const testAccelerationChart = new SignalChart($("testAccelChart"), ["ax", "ay", "az"], {minimumRange: 12, maxPoints: 1000, fitWidth: true});
+    const testGyroscopeChart = new SignalChart($("testGyroChart"), ["gx", "gy", "gz"], {minimumRange: 90, maxPoints: 1000, fitWidth: true});
     state.simulator = new MotionSimulator(sample => receiveSample(sample, "simulator"));
 
     function updateDesktopStatus(status, message) {
@@ -260,6 +278,7 @@ function initDesktop() {
             $("predictionConfidence").textContent = "Collecting a three-second window";
             $("confidenceBar").style.width = "0%";
             $("predictionCard").classList.remove("unknown");
+            setPredictionVisual($("livePredictionVisual"));
             return;
         }
 
@@ -270,6 +289,8 @@ function initDesktop() {
             $("predictionLabel").textContent = "Prediction unavailable";
             $("predictionConfidence").textContent = error.message;
             $("predictionCard").classList.remove("unknown");
+            setPredictionVisual($("livePredictionVisual"));
+            $("livePredictionVisual").setAttribute("aria-label", "Live prediction unavailable");
         }
     }
 
@@ -287,12 +308,36 @@ function initDesktop() {
         };
     }
 
+    function setPredictionVisual(element, label = "") {
+        element.classList.remove(...PREDICTION_VISUAL_CLASSES);
+        const visualClass = label
+            ? PREDICTION_VISUAL_BY_LABEL[label] ?? "movement-custom"
+            : "movement-waiting";
+        element.classList.add(visualClass);
+        element.setAttribute(
+            "aria-label",
+            label ? `Illustration for predicted movement: ${label}` : "Waiting for a prediction",
+        );
+    }
+
+    function clearTestPredictionDisplay() {
+        state.lastTestPrediction = null;
+        $("testPredictionResult").hidden = true;
+        $("testPredictionResult").classList.remove("unknown");
+        $("testRecordingSeries").hidden = true;
+        testAccelerationChart.clear();
+        testGyroscopeChart.clear();
+        $("testRecordingMeta").textContent = "";
+        setPredictionVisual($("testPredictionVisual"));
+    }
+
     function renderLivePrediction(prediction) {
         const result = predictionPresentation(prediction);
         $("predictionLabel").textContent = result.label;
         $("predictionConfidence").textContent = result.detail;
         $("confidenceBar").style.width = `${result.confidencePercent}%`;
         $("predictionCard").classList.toggle("unknown", result.unknown);
+        setPredictionVisual($("livePredictionVisual"), result.label);
     }
 
     function renderTestPrediction(prediction) {
@@ -300,8 +345,21 @@ function initDesktop() {
         $("testPredictionLabel").textContent = result.label;
         $("testPredictionConfidence").textContent = result.detail;
         $("testPredictionResult").classList.toggle("unknown", result.unknown);
+        setPredictionVisual($("testPredictionVisual"), result.label);
         $("testPredictionResult").hidden = false;
         return result;
+    }
+
+    function renderTestRecording(recording) {
+        $("testRecordingSeries").hidden = false;
+        testAccelerationChart.setSamples(recording.samples);
+        testGyroscopeChart.setSamples(recording.samples);
+        const duration = recording.samples.at(-1).t - recording.samples[0].t;
+        const durationSeconds = duration / 1000;
+        const rate = durationSeconds > 0
+            ? Math.round(recording.samples.length / durationSeconds)
+            : 0;
+        $("testRecordingMeta").textContent = `${recording.samples.length} samples over ${durationSeconds.toFixed(1)} seconds · approximately ${rate} samples/s`;
     }
 
     async function recordTrial() {
@@ -481,7 +539,7 @@ function initDesktop() {
     function invalidateModel() {
         state.pythonModel.reset();
         state.modelTrained = false;
-        state.lastTestPrediction = null;
+        clearTestPredictionDisplay();
         $("modelState").className = state.modelLoadError ? "model-state error" : "model-state";
         $("modelState").textContent = state.modelLoadError
             ? "Python unavailable"
@@ -489,9 +547,8 @@ function initDesktop() {
         $("modelResults").hidden = true;
         $("testPredictionPanel").hidden = true;
         $("testModelLocked").hidden = false;
-        $("testPredictionResult").hidden = true;
         $("predictionCard").classList.remove("unknown");
-        $("testPredictionResult").classList.remove("unknown");
+        setPredictionVisual($("livePredictionVisual"));
         updateRecordButton();
     }
 
@@ -513,7 +570,7 @@ function initDesktop() {
             );
             const evaluation = result.evaluation;
             state.modelTrained = true;
-            state.lastTestPrediction = null;
+            clearTestPredictionDisplay();
             $("modelState").className = "model-state ready";
             $("modelState").textContent = "Model trained";
             $("modelResults").hidden = false;
@@ -527,6 +584,7 @@ function initDesktop() {
             $("predictionLabel").textContent = "Waiting for movement...";
             $("predictionConfidence").textContent = "Collecting a three-second window";
             $("confidenceBar").style.width = "0%";
+            setPredictionVisual($("livePredictionVisual"));
             showToast("Model trained. Try a movement without pressing record.");
             updateRecordButton();
             updatePrediction();
@@ -547,7 +605,7 @@ function initDesktop() {
 
         state.captureBusy = true;
         updateRecordButton();
-        $("testPredictionResult").hidden = true;
+        clearTestPredictionDisplay();
         $("testPredictionBtn").textContent = "Preparing...";
         $("testProgress").hidden = false;
         $("testProgressBar").style.width = "0%";
@@ -590,6 +648,7 @@ function initDesktop() {
             const prediction = state.pythonModel.predict(completed.samples);
             state.lastTestPrediction = prediction;
             const result = renderTestPrediction(prediction);
+            renderTestRecording(completed);
             finishTestPredictionUi(true);
             showToast(`Recorded test predicted as “${result.label}”.`);
         } catch (error) {
