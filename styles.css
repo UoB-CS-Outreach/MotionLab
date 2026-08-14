@@ -851,6 +851,22 @@ canvas {
     display: grid;
 }
 
+.prediction-visual .motion-arrow.horizontal {
+    width: 78px;
+}
+
+.prediction-visual .custom-motion-path {
+    top: 24px;
+    width: 82px;
+    height: 42px;
+}
+
+.prediction-visual .still-mark {
+    top: 9px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
 .prediction-visual.movement-unknown .motion-phone,
 .prediction-visual.movement-waiting .motion-phone {
     opacity: 0.42;
