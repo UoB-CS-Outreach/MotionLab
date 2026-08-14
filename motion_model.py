@@ -17,6 +17,7 @@ MIN_RECORDING_SAMPLES = 30
 MIN_RECORDING_DURATION_MS = 2_500
 RECORDING_DURATION_MS = 3_000
 RESAMPLED_POINTS = 90
+MIN_RECORDINGS_PER_LABEL = 3
 DTW_WINDOW_POINTS = 18
 SUMMARY_CLASSIFIER = "summary"
 DTW_CLASSIFIER = "dtw"
@@ -490,10 +491,11 @@ def leave_one_trial_out(
 
 
 def dataset_readiness(recordings: list[dict[str, Any]]) -> dict[str, Any]:
-    """Summarise whether every represented label has two examples."""
+    """Summarise whether every represented label has three examples."""
     counts = Counter(recording["label"] for recording in recordings or [])
     return {
-        "ready": len(counts) >= 2 and all(count >= 2 for count in counts.values()),
+        "ready": len(counts) >= 2
+        and all(count >= MIN_RECORDINGS_PER_LABEL for count in counts.values()),
         "counts": dict(counts),
         "labels": len(counts),
         "recordings": len(recordings or []),

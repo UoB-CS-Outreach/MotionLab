@@ -50,18 +50,20 @@
 
                 <details class="demo-box">
                     <summary>No phone? Use the signal simulator</summary>
-                    <p>The simulator lets you test the entire activity on this computer.</p>
-                    <div class="inline-controls">
-                        <label>
-                            Demo movement
-                            <select id="demoPattern">
-                                <option value="still">Still</option>
-                                <option value="shake">Side-to-side</option>
-                                <option value="bounce">Up-and-down</option>
-                                <option value="circle">Circle</option>
-                            </select>
-                        </label>
-                        <button class="button secondary" id="toggleDemoBtn" type="button">Start simulator</button>
+                    <div class="demo-content">
+                        <p>The simulator lets you test the entire activity on this computer.</p>
+                        <div class="inline-controls">
+                            <label>
+                                Demo movement
+                                <select id="demoPattern">
+                                    <option value="still">Still</option>
+                                    <option value="shake">Side-to-side</option>
+                                    <option value="bounce">Up-and-down</option>
+                                    <option value="circle">Circle</option>
+                                </select>
+                            </label>
+                            <button class="button secondary" id="toggleDemoBtn" type="button">Start simulator</button>
+                        </div>
                     </div>
                 </details>
             </section>
@@ -235,23 +237,33 @@
                         </div>
                         <span class="model-state" id="modelState">Loading Python</span>
                     </div>
-                    <p class="panel-intro">Once you have recorded two examples of at least two movements, train the model and check how well it recognises them.</p>
+                    <p class="panel-intro">Once you have recorded three examples of at least two movements, train the model and check how well it recognises them.</p>
 
                     <label class="classifier-choice">
                         Classifier
                         <select id="classifierSelect">
-                            <option value="summary" selected>Summary statistics + k-NN</option>
-                            <option value="dtw">Dynamic Time Warping + k-NN</option>
+                            <option value="summary" selected>Summary statistics + k-nearest neighbours</option>
+                            <option value="dtw">Dynamic Time Warping + k-nearest neighbours</option>
                         </select>
                         <small id="classifierDescription">Compares overall signal properties. Fast and suitable for this short activity.</small>
                     </label>
 
                     <button class="button primary wide" id="trainBtn" type="button" disabled>Train activity model</button>
-                    <p class="trainingHint muted" id="trainingHint">Collect at least two recordings for each of two movement labels.</p>
+                    <p class="trainingHint muted" id="trainingHint">Collect three recordings for each of at least two movements.</p>
 
                     <div class="model-results" id="modelResults" hidden>
                         <div class="accuracy-card">
-                            <span>Trial-by-trial test accuracy</span>
+                            <div class="accuracy-heading">
+                                <span>Accuracy on hidden recordings</span>
+                                <span class="info-tooltip">
+                                    <button class="info-tooltip-trigger" type="button"
+                                            aria-label="Explain the accuracy score"
+                                            aria-describedby="accuracyTooltip">?</button>
+                                    <span class="info-tooltip-content" id="accuracyTooltip" role="tooltip">
+                                        One complete three-second recording is hidden while the model learns from the others. It compares the hidden recording with the three closest remaining recordings, giving closer matches more influence. This repeats for every recording, and the percentage shows how many were identified correctly. This is called leave-one-recording-out cross-validation.
+                                    </span>
+                                </span>
+                            </div>
                             <strong id="modelAccuracy">—</strong>
                             <small id="modelMethod"></small>
                             <small id="accuracyDetail"></small>
@@ -262,7 +274,7 @@
                         <summary>How is the model learning?</summary>
                         <p>You teach it by providing examples and the correct movement names. Python first uses linear interpolation to give every recording 90 equally spaced time points.</p>
                         <p>Summary statistics represents each recording using properties such as its average, variation and rate of change. Dynamic Time Warping instead compares the full signal shapes and lines up parts that happened slightly earlier or later.</p>
-                        <p>The accuracy score checks the model by hiding one recording at a time and asking it to predict that recording from the others.</p>
+                        <p>The accuracy score uses leave-one-recording-out cross-validation: it hides one complete recording at a time and asks the model to predict it from the others.</p>
                     </details>
                 </section>
 

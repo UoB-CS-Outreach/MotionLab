@@ -10,14 +10,15 @@ const mode = params.get("mode") === "phone" ? "phone" : "desktop";
 const wait = milliseconds => new Promise(resolve => window.setTimeout(resolve, milliseconds));
 const MIN_RECORDING_SAMPLES = 30;
 const MIN_RECORDING_DURATION_MS = 2500;
+const MIN_RECORDINGS_PER_LABEL = 3;
 const UNKNOWN_CONFIDENCE_THRESHOLD = 0.6;
 const CLASSIFIER_DETAILS = {
     summary: {
-        label: "Summary statistics + k-NN",
+        label: "Summary statistics + k-nearest neighbours",
         description: "Compares overall signal properties. Fast and suitable for this short activity.",
     },
     dtw: {
-        label: "Dynamic Time Warping + k-NN",
+        label: "Dynamic Time Warping + k-nearest neighbours",
         description: "Compares full signal shapes and allows for small differences in timing.",
     },
 };
@@ -71,7 +72,8 @@ function datasetReadiness(recordings) {
         counts.set(recording.label, (counts.get(recording.label) ?? 0) + 1);
     }
     return {
-        ready: counts.size >= 2 && [...counts.values()].every(count => count >= 2),
+        ready: counts.size >= 2
+            && [...counts.values()].every(count => count >= MIN_RECORDINGS_PER_LABEL),
         counts,
         labels: counts.size,
         recordings: recordings?.length ?? 0,
@@ -399,7 +401,7 @@ function initDesktop() {
             .map(([label, count]) => `
                 <div class="dataset-label">
                     <strong title="${escapeHtml(label)}">${escapeHtml(label)}</strong>
-                    <span>${count} ${count === 1 ? "recording" : "recordings"}${count >= 3 ? " · ready" : " · aim for 3"}</span>
+                    <span>${count} ${count === 1 ? "recording" : "recordings"}${count >= MIN_RECORDINGS_PER_LABEL ? " · ready" : " · aim for 3"}</span>
                 </div>`)
             .join("");
 
@@ -412,10 +414,12 @@ function initDesktop() {
         } else if (readiness.ready) {
             $("trainingHint").textContent = `${readiness.recordings} recordings across ${readiness.labels} movements are ready.`;
         } else if (readiness.labels < 2) {
-            $("trainingHint").textContent = "Collect at least two recordings for each of two movement labels.";
+            $("trainingHint").textContent = "Collect three recordings for each of at least two movements.";
         } else {
-            const shortLabels = [...readiness.counts].filter(([, count]) => count < 2).map(([label]) => label);
-            $("trainingHint").textContent = `Add another recording for: ${shortLabels.join(", ")}.`;
+            const shortLabels = [...readiness.counts]
+                .filter(([, count]) => count < MIN_RECORDINGS_PER_LABEL)
+                .map(([label, count]) => `${label} (${MIN_RECORDINGS_PER_LABEL - count} more)`);
+            $("trainingHint").textContent = `More recordings needed: ${shortLabels.join(", ")}.`;
         }
     }
 
@@ -498,8 +502,8 @@ function initDesktop() {
             $("modelAccuracy").textContent = evaluation.accuracy === null ? "—" : `${Math.round(evaluation.accuracy * 100)}%`;
             $("modelMethod").textContent = CLASSIFIER_DETAILS[classifier].label;
             $("accuracyDetail").textContent = evaluation.tested
-                ? `${evaluation.correct} of ${evaluation.tested} held-out trials correct`
-                : "Add more trials to evaluate";
+                ? `${evaluation.correct} of ${evaluation.tested} hidden recordings correct`
+                : "Add more recordings to evaluate";
             $("predictionLabel").textContent = "Waiting for movement...";
             $("predictionConfidence").textContent = "Collecting a three-second window";
             $("confidenceBar").style.width = "0%";

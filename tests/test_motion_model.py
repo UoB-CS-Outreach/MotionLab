@@ -135,11 +135,10 @@ class MotionModelTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Train a model"):
             motion_model.predict_json(json.dumps(RECORDINGS[0]["samples"]))
 
-    def test_dataset_readiness_requires_two_trials_per_label(self) -> None:
+    def test_dataset_readiness_requires_three_recordings_per_label(self) -> None:
         self.assertTrue(motion_model.dataset_readiness(RECORDINGS)["ready"])
-        self.assertFalse(
-            motion_model.dataset_readiness([RECORDINGS[0], RECORDINGS[3]])["ready"]
-        )
+        self.assertTrue(motion_model.dataset_readiness(RECORDINGS[:6])["ready"])
+        self.assertFalse(motion_model.dataset_readiness(RECORDINGS[:5])["ready"])
 
 
 if __name__ == "__main__":
