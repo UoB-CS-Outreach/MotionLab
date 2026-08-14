@@ -13,6 +13,10 @@ from collections import Counter
 from typing import Any
 
 CHANNELS = ("ax", "ay", "az", "gx", "gy", "gz")
+MIN_RECORDING_SAMPLES = 30
+MIN_RECORDING_DURATION_MS = 2_500
+RECORDING_DURATION_MS = 3_000
+RESAMPLED_POINTS = 90
 _model: dict[str, Any] | None = None
 
 
@@ -26,6 +30,82 @@ def _finite(value: Any) -> float:
 
 def _mean(values: list[float]) -> float:
     return sum(values) / len(values) if values else 0.0
+
+
+def _sample_timestamp(sample: dict[str, Any]) -> float:
+    for key in ("deviceTime", "t"):
+        try:
+            timestamp = float(sample.get(key))
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(timestamp) and (key != "deviceTime" or timestamp != 0):
+            return timestamp
+    raise ValueError("Every sensor reading needs a valid timestamp.")
+
+
+def resample_samples(
+    samples: list[dict[str, Any]], target_length: int = RESAMPLED_POINTS
+) -> list[dict[str, float]]:
+    """Linearly resample six sensor channels onto a fixed three-second grid."""
+    if not isinstance(samples, list) or len(samples) < MIN_RECORDING_SAMPLES:
+        raise ValueError(
+            f"A recording needs at least {MIN_RECORDING_SAMPLES} sensor readings."
+        )
+    if target_length < 2:
+        raise ValueError("The resampled series needs at least two time points.")
+
+    timed_samples = sorted(
+        (
+            (_sample_timestamp(sample), index, sample)
+            for index, sample in enumerate(samples)
+        ),
+        key=lambda item: (item[0], item[1]),
+    )
+    source: list[dict[str, float]] = []
+    for timestamp, _, sample in timed_samples:
+        point = {"source_t": timestamp}
+        point.update({channel: _finite(sample.get(channel)) for channel in CHANNELS})
+        if source and timestamp == source[-1]["source_t"]:
+            source[-1] = point
+        else:
+            source.append(point)
+
+    if len(source) < MIN_RECORDING_SAMPLES:
+        raise ValueError(
+            f"A recording needs at least {MIN_RECORDING_SAMPLES} distinct readings."
+        )
+
+    start = source[0]["source_t"]
+    end = source[-1]["source_t"]
+    duration = end - start
+    if duration < MIN_RECORDING_DURATION_MS:
+        raise ValueError("A recording needs at least 2.5 seconds of sensor data.")
+
+    resampled: list[dict[str, float]] = []
+    right_index = 1
+    for index in range(target_length):
+        fraction = index / (target_length - 1)
+        source_time = start + fraction * duration
+        while (
+            right_index < len(source) - 1
+            and source[right_index]["source_t"] < source_time
+        ):
+            right_index += 1
+
+        left = source[right_index - 1]
+        right = source[right_index]
+        interval = right["source_t"] - left["source_t"]
+        weight = 0.0 if interval <= 0 else (source_time - left["source_t"]) / interval
+        point = {"t": fraction * RECORDING_DURATION_MS}
+        point.update(
+            {
+                channel: left[channel] + weight * (right[channel] - left[channel])
+                for channel in CHANNELS
+            }
+        )
+        resampled.append(point)
+
+    return resampled
 
 
 def _standard_deviation(values: list[float], average: float | None = None) -> float:
@@ -79,21 +159,16 @@ def _magnitude_features(
 
 
 def extract_features(samples: list[dict[str, Any]]) -> list[float]:
-    """Convert one variable-length sensor recording into 51 features."""
-    if not isinstance(samples, list) or len(samples) < 2:
-        raise ValueError("A recording needs at least two sensor samples.")
+    """Resample one sensor recording and convert it into 50 features."""
+    resampled = resample_samples(samples)
 
     features: list[float] = []
     for channel in CHANNELS:
-        values = [_finite(sample.get(channel)) for sample in samples]
+        values = [sample[channel] for sample in resampled]
         features.extend(_channel_features(values))
 
-    features.extend(_magnitude_features(samples, ("ax", "ay", "az")))
-    features.extend(_magnitude_features(samples, ("gx", "gy", "gz")))
-
-    timestamps = [_finite(sample.get("t")) for sample in samples]
-    duration_seconds = max(0.001, (timestamps[-1] - timestamps[0]) / 1000)
-    features.append(len(samples) / duration_seconds)
+    features.extend(_magnitude_features(resampled, ("ax", "ay", "az")))
+    features.extend(_magnitude_features(resampled, ("gx", "gy", "gz")))
     return [_finite(feature) for feature in features]
 
 
@@ -137,8 +212,9 @@ def fit_knn(recordings: list[dict[str, Any]], requested_k: int = 3) -> dict[str,
     ]
     labels = list(dict.fromkeys(recording["label"] for recording in recordings))
     return {
-        "type": "knn-motion-features",
+        "type": "knn-resampled-motion-features",
         "k": max(1, min(int(requested_k), len(examples))),
+        "resampled_points": RESAMPLED_POINTS,
         "centres": centres,
         "scales": scales,
         "examples": examples,

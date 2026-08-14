@@ -8,6 +8,9 @@ const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const mode = params.get("mode") === "phone" ? "phone" : "desktop";
 const wait = milliseconds => new Promise(resolve => window.setTimeout(resolve, milliseconds));
+const MIN_RECORDING_SAMPLES = 30;
+const MIN_RECORDING_DURATION_MS = 2500;
+const UNKNOWN_CONFIDENCE_THRESHOLD = 0.6;
 
 let toastTimer;
 function showToast(message) {
@@ -34,6 +37,24 @@ function formatReading(value) {
     return limited.toFixed(2);
 }
 
+function sampleTimestamp(sample) {
+    const deviceTime = Number(sample?.deviceTime);
+    if (Number.isFinite(deviceTime) && deviceTime !== 0) return deviceTime;
+    return safeNumber(sample?.t);
+}
+
+function recordingQualityError(samples) {
+    if (!Array.isArray(samples) || samples.length < MIN_RECORDING_SAMPLES) {
+        const count = samples?.length ?? 0;
+        return `Only ${count} readings arrived; at least ${MIN_RECORDING_SAMPLES} are needed.`;
+    }
+    const duration = sampleTimestamp(samples.at(-1)) - sampleTimestamp(samples[0]);
+    if (duration < MIN_RECORDING_DURATION_MS) {
+        return "The readings cover less than 2.5 seconds. Please reconnect and try again.";
+    }
+    return "";
+}
+
 function datasetReadiness(recordings) {
     const counts = new Map();
     for (const recording of recordings ?? []) {
@@ -46,6 +67,13 @@ function datasetReadiness(recordings) {
         recordings: recordings?.length ?? 0,
     };
 }
+
+const PATTERN_BY_LABEL = {
+    "Still": "still",
+    "Side-to-side": "shake",
+    "Up-and-down": "bounce",
+    "Circle": "circle",
+};
 
 if (mode === "phone") {
     initPhone();
@@ -70,6 +98,7 @@ function initDesktop() {
         modelEngineReady: false,
         modelLoadError: false,
         modelTrained: false,
+        lastTestPrediction: null,
         lastSampleAt: 0,
         lastPredictionAt: 0,
         source: "none",
@@ -191,6 +220,10 @@ function initDesktop() {
         const unavailable = state.captureBusy || !streamIsFresh();
         $("recordBtn").disabled = unavailable;
         $("testPredictionBtn").disabled = unavailable || !state.modelTrained;
+        const readiness = datasetReadiness(state.recordings);
+        $("trainBtn").disabled = state.captureBusy
+            || !readiness.ready
+            || !state.modelEngineReady;
     }
 
     function updatePrediction() {
@@ -198,23 +231,56 @@ function initDesktop() {
         const now = Date.now();
         const windowSamples = state.liveBuffer.filter(sample => now - sample.t <= 3000);
         const duration = windowSamples.length > 1 ? windowSamples.at(-1).t - windowSamples[0].t : 0;
-        if (windowSamples.length < 30 || duration < 2500) {
+        if (
+            windowSamples.length < MIN_RECORDING_SAMPLES
+            || duration < MIN_RECORDING_DURATION_MS
+        ) {
             $("predictionLabel").textContent = "Waiting for movement...";
             $("predictionConfidence").textContent = "Collecting a three-second window";
             $("confidenceBar").style.width = "0%";
+            $("predictionCard").classList.remove("unknown");
             return;
         }
 
         try {
             const prediction = state.pythonModel.predict(windowSamples);
-            const confidencePercent = Math.round(prediction.confidence * 100);
-            $("predictionLabel").textContent = prediction.label;
-            $("predictionConfidence").textContent = `${confidencePercent}% of neighbour vote`;
-            $("confidenceBar").style.width = `${confidencePercent}%`;
+            renderLivePrediction(prediction);
         } catch (error) {
             $("predictionLabel").textContent = "Prediction unavailable";
             $("predictionConfidence").textContent = error.message;
+            $("predictionCard").classList.remove("unknown");
         }
+    }
+
+    function predictionPresentation(prediction) {
+        const confidencePercent = Math.round(prediction.confidence * 100);
+        const unknown = $("unknownPredictionToggle").checked
+            && prediction.confidence < UNKNOWN_CONFIDENCE_THRESHOLD;
+        return {
+            label: unknown ? "Unknown" : prediction.label,
+            confidencePercent,
+            detail: unknown
+                ? `${confidencePercent}% highest neighbour vote · below 60%`
+                : `${confidencePercent}% of neighbour vote`,
+            unknown,
+        };
+    }
+
+    function renderLivePrediction(prediction) {
+        const result = predictionPresentation(prediction);
+        $("predictionLabel").textContent = result.label;
+        $("predictionConfidence").textContent = result.detail;
+        $("confidenceBar").style.width = `${result.confidencePercent}%`;
+        $("predictionCard").classList.toggle("unknown", result.unknown);
+    }
+
+    function renderTestPrediction(prediction) {
+        const result = predictionPresentation(prediction);
+        $("testPredictionLabel").textContent = result.label;
+        $("testPredictionConfidence").textContent = result.detail;
+        $("testPredictionResult").classList.toggle("unknown", result.unknown);
+        $("testPredictionResult").hidden = false;
+        return result;
     }
 
     async function recordTrial() {
@@ -231,7 +297,7 @@ function initDesktop() {
         }
 
         state.captureBusy = true;
-        updateRecordButton();
+        invalidateModel();
         $("recordBtn").innerHTML = '<span class="record-dot"></span> Preparing...';
         $("recordProgress").hidden = false;
         $("recordProgressBar").style.width = "0%";
@@ -264,8 +330,9 @@ function initDesktop() {
         state.captureBusy = false;
         finishRecordingUi();
 
-        if (completed.samples.length < 15) {
-            showToast("Too few readings arrived. Please reconnect and try again.");
+        const qualityError = recordingQualityError(completed.samples);
+        if (qualityError) {
+            showToast(qualityError);
             return;
         }
 
@@ -273,7 +340,6 @@ function initDesktop() {
         completed.duration = completed.samples.at(-1).t - completed.samples[0].t;
         state.recordings.push(completed);
         state.viewedRecordingId = completed.id;
-        invalidateModel();
         renderDataset();
         showToast(`Recorded “${label}” with ${completed.samples.length} samples.`);
     }
@@ -294,6 +360,14 @@ function initDesktop() {
         return selection === "custom" ? $("customLabel").value.trim() : selection;
     }
 
+    function syncMovementGuide(label) {
+        document.querySelectorAll(".movement-card").forEach(card => {
+            const selected = card.dataset.label === label;
+            card.classList.toggle("is-selected", selected);
+            card.setAttribute("aria-pressed", String(selected));
+        });
+    }
+
     function renderDataset() {
         const readiness = datasetReadiness(state.recordings);
         $("datasetEmpty").hidden = state.recordings.length > 0;
@@ -302,7 +376,9 @@ function initDesktop() {
         $("clearDataBtn").disabled = state.recordings.length === 0;
         $("undoRecordingBtn").disabled = state.recordings.length === 0;
         $("deleteRecordingBtn").disabled = state.recordings.length === 0;
-        $("trainBtn").disabled = !readiness.ready || !state.modelEngineReady;
+        $("trainBtn").disabled = state.captureBusy
+            || !readiness.ready
+            || !state.modelEngineReady;
 
         $("datasetSummary").innerHTML = [...readiness.counts]
             .map(([label, count]) => `
@@ -366,6 +442,7 @@ function initDesktop() {
     function invalidateModel() {
         state.pythonModel.reset();
         state.modelTrained = false;
+        state.lastTestPrediction = null;
         $("modelState").className = state.modelLoadError ? "model-state error" : "model-state";
         $("modelState").textContent = state.modelLoadError
             ? "Python unavailable"
@@ -373,6 +450,8 @@ function initDesktop() {
         $("modelResults").hidden = true;
         $("testPredictionPanel").hidden = true;
         $("testPredictionResult").hidden = true;
+        $("predictionCard").classList.remove("unknown");
+        $("testPredictionResult").classList.remove("unknown");
         updateRecordButton();
     }
 
@@ -384,6 +463,7 @@ function initDesktop() {
             const result = state.pythonModel.trainAndEvaluate(state.recordings, 3);
             const evaluation = result.evaluation;
             state.modelTrained = true;
+            state.lastTestPrediction = null;
             $("modelState").className = "model-state ready";
             $("modelState").textContent = "Model trained";
             $("modelResults").hidden = false;
@@ -443,20 +523,19 @@ function initDesktop() {
         state.recording = null;
         state.captureBusy = false;
 
-        if (completed.samples.length < 15) {
+        const qualityError = recordingQualityError(completed.samples);
+        if (qualityError) {
             finishTestPredictionUi(false);
-            showToast("Too few readings arrived. Please reconnect and try again.");
+            showToast(qualityError);
             return;
         }
 
         try {
             const prediction = state.pythonModel.predict(completed.samples);
-            const confidencePercent = Math.round(prediction.confidence * 100);
-            $("testPredictionLabel").textContent = prediction.label;
-            $("testPredictionConfidence").textContent = `${confidencePercent}% of neighbour vote`;
-            $("testPredictionResult").hidden = false;
+            state.lastTestPrediction = prediction;
+            const result = renderTestPrediction(prediction);
             finishTestPredictionUi(true);
-            showToast(`Recorded test predicted as “${prediction.label}”.`);
+            showToast(`Recorded test predicted as “${result.label}”.`);
         } catch (error) {
             finishTestPredictionUi(false);
             showToast(error.message);
@@ -524,20 +603,37 @@ function initDesktop() {
     $("toggleDemoBtn").addEventListener("click", () => state.simulator.running ? stopSimulator() : startSimulator());
     $("demoPattern").addEventListener("change", () => {
         state.simulator.setPattern($("demoPattern").value);
-        const labels = {still: "Still", shake: "Side-to-side shake", bounce: "Up-and-down bounce", circle: "Circle"};
+        const labels = {still: "Still", shake: "Side-to-side", bounce: "Up-and-down", circle: "Circle"};
         $("activityLabel").value = labels[$("demoPattern").value];
         $("customLabelWrap").hidden = true;
         $("recordControls").classList.remove("has-custom");
+        syncMovementGuide($("activityLabel").value);
     });
     $("activityLabel").addEventListener("change", () => {
         const hasCustomLabel = $("activityLabel").value === "custom";
         $("customLabelWrap").hidden = !hasCustomLabel;
         $("recordControls").classList.toggle("has-custom", hasCustomLabel);
+        syncMovementGuide($("activityLabel").value);
+        const matchingPattern = PATTERN_BY_LABEL[$("activityLabel").value];
+        if (matchingPattern) {
+            $("demoPattern").value = matchingPattern;
+            state.simulator.setPattern(matchingPattern);
+        }
         if (hasCustomLabel) $("customLabel").focus();
+    });
+    document.querySelectorAll(".movement-card").forEach(card => {
+        card.addEventListener("click", () => {
+            $("activityLabel").value = card.dataset.label;
+            $("activityLabel").dispatchEvent(new Event("change"));
+        });
     });
     $("recordingViewerSelect").addEventListener("change", () => {
         state.viewedRecordingId = $("recordingViewerSelect").value;
         showSelectedRecording();
+    });
+    $("unknownPredictionToggle").addEventListener("change", () => {
+        if (state.modelTrained) updatePrediction();
+        if (state.lastTestPrediction) renderTestPrediction(state.lastTestPrediction);
     });
     $("recordBtn").addEventListener("click", recordTrial);
     $("trainBtn").addEventListener("click", trainModel);
@@ -556,12 +652,15 @@ function initDesktop() {
         showToast(`Deleted the selected “${selected.label}” recording.`);
     });
     $("undoRecordingBtn").addEventListener("click", () => {
-        const removed = state.recordings.pop();
+        const removed = state.recordings.at(-1);
         if (!removed) return;
+        if (!window.confirm(`Delete the most recent “${removed.label}” recording?`)) return;
+
+        state.recordings.pop();
         if (state.viewedRecordingId === removed.id) state.viewedRecordingId = null;
         invalidateModel();
         renderDataset();
-        showToast(`Removed the last “${removed.label}” recording.`);
+        showToast(`Deleted the most recent “${removed.label}” recording.`);
     });
     $("clearDataBtn").addEventListener("click", () => {
         if (!window.confirm("Clear all movement recordings and the trained model?")) return;

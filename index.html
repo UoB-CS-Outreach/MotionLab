@@ -56,8 +56,8 @@
                             Demo movement
                             <select id="demoPattern">
                                 <option value="still">Still</option>
-                                <option value="shake">Side-to-side shake</option>
-                                <option value="bounce">Up-and-down bounce</option>
+                                <option value="shake">Side-to-side</option>
+                                <option value="bounce">Up-and-down</option>
                                 <option value="circle">Circle</option>
                             </select>
                         </label>
@@ -106,19 +106,71 @@
                 <div class="panel-heading">
                     <div>
                         <p class="step-label">Step 2</p>
-                        <h2 id="collectHeading">Build a movement dataset</h2>
+                        <h2 id="collectHeading">Record movement examples</h2>
                     </div>
                     <button class="text-button danger" id="clearDataBtn" type="button" disabled>Clear all</button>
                 </div>
-                <p class="panel-intro">Choose a label, press record, then perform that movement for three seconds. Aim for three recordings of each label.</p>
+                <p class="panel-intro">Each recording is an example that teaches the model what a movement looks like.</p>
+
+                <section class="movement-guide" aria-labelledby="movementGuideHeading">
+                    <div class="movement-guide-heading">
+                        <h3 id="movementGuideHeading">Choose a movement</h3>
+                        <p>Keep the phone in the position shown for the full three seconds.</p>
+                    </div>
+
+                    <div class="movement-grid">
+                        <button class="movement-card is-selected" type="button" data-label="Still"
+                                aria-pressed="true" aria-controls="activityLabel">
+                            <span class="movement-visual movement-still" aria-hidden="true">
+                                <span class="desk-line"></span>
+                                <span class="motion-phone"></span>
+                                <span class="still-mark">STILL</span>
+                            </span>
+                            <strong>Still</strong>
+                            <span>Place the phone screen-up on the desk. Leave it untouched.</span>
+                        </button>
+
+                        <button class="movement-card" type="button" data-label="Side-to-side"
+                                aria-pressed="false" aria-controls="activityLabel">
+                            <span class="movement-visual movement-horizontal" aria-hidden="true">
+                                <span class="motion-arrow horizontal"></span>
+                                <span class="motion-phone"></span>
+                            </span>
+                            <strong>Side-to-side</strong>
+                            <span>Hold the screen facing you. Move it left and right.</span>
+                        </button>
+
+                        <button class="movement-card" type="button" data-label="Up-and-down"
+                                aria-pressed="false" aria-controls="activityLabel">
+                            <span class="movement-visual movement-vertical" aria-hidden="true">
+                                <span class="motion-arrow vertical"></span>
+                                <span class="motion-phone"></span>
+                            </span>
+                            <strong>Up-and-down</strong>
+                            <span>Hold the screen facing you. Move it straight up and down.</span>
+                        </button>
+
+                        <button class="movement-card" type="button" data-label="Circle"
+                                aria-pressed="false" aria-controls="activityLabel">
+                            <span class="movement-visual movement-circle" aria-hidden="true">
+                                <span class="motion-loop"></span>
+                                <span class="motion-phone"></span>
+                            </span>
+                            <strong>Circle</strong>
+                            <span>Hold the screen facing you. Draw small circles in the air.</span>
+                        </button>
+                    </div>
+
+                    <p class="movement-guide-tip"><strong>Start with Still and one other movement.</strong> Record each at least twice, repeating it in the same way. Add a third example if you have time.</p>
+                </section>
 
                 <div class="record-controls" id="recordControls">
                     <label>
                         Movement label
                         <select id="activityLabel">
                             <option value="Still">Still</option>
-                            <option value="Side-to-side shake">Side-to-side shake</option>
-                            <option value="Up-and-down bounce">Up-and-down bounce</option>
+                            <option value="Side-to-side">Side-to-side</option>
+                            <option value="Up-and-down">Up-and-down</option>
                             <option value="Circle">Circle</option>
                             <option value="custom">Write my own...</option>
                         </select>
@@ -171,7 +223,7 @@
                 </section>
 
                 <div class="panel-actions">
-                    <button class="button secondary" id="undoRecordingBtn" type="button" disabled>Undo last</button>
+                    <button class="button secondary danger-action" id="undoRecordingBtn" type="button" disabled>Undo last</button>
                     <button class="button secondary danger-action" id="deleteRecordingBtn" type="button" disabled>Delete selected</button>
                 </div>
             </section>
@@ -184,7 +236,7 @@
                     </div>
                     <span class="model-state" id="modelState">Loading Python</span>
                 </div>
-                <p class="panel-intro">Motion Lab converts each recording into numerical features, then compares new movements with your labelled examples.</p>
+                <p class="panel-intro">Once you have recorded two examples of at least two movements, train the model and see whether it can recognise them.</p>
 
                 <button class="button primary wide" id="trainBtn" type="button" disabled>Train activity model</button>
                 <p class="trainingHint muted" id="trainingHint">Collect at least two recordings for each of two movement labels.</p>
@@ -195,11 +247,21 @@
                         <strong id="modelAccuracy">—</strong>
                         <small id="accuracyDetail"></small>
                     </div>
-                    <div class="prediction-card">
+                    <div class="prediction-card" id="predictionCard">
                         <span>Live prediction</span>
                         <strong id="predictionLabel">Waiting for movement...</strong>
                         <div class="confidence-track" aria-hidden="true"><span id="confidenceBar"></span></div>
                         <small id="predictionConfidence">Collecting a three-second window</small>
+                    </div>
+                    <div class="unknown-option">
+                        <label class="unknown-toggle" for="unknownPredictionToggle">
+                            <input id="unknownPredictionToggle" type="checkbox" checked>
+                            <span class="toggle-track" aria-hidden="true"><span></span></span>
+                            <span class="unknown-copy">
+                                <strong>Allow “Unknown”</strong>
+                                <small>Used when the highest movement receives less than 60% of the neighbour vote.</small>
+                            </span>
+                        </label>
                     </div>
                 </div>
 
@@ -207,7 +269,7 @@
                     <div class="test-prediction-heading">
                         <div>
                             <strong>Recorded prediction</strong>
-                            <p>Record one three-second movement to classify. It will not be added to the training dataset.</p>
+                            <p>Repeat one of your movements for three seconds. This test will not be added to the training examples.</p>
                         </div>
                         <button class="button secondary" id="testPredictionBtn" type="button" disabled>Record test movement</button>
                     </div>
@@ -223,8 +285,10 @@
                 </section>
 
                 <details class="explain-box">
-                    <summary>What did the model learn?</summary>
-                    <p>For each three-second example, it measures properties such as average, variation, range, energy and rate of change across all six sensor channels. A small k-nearest-neighbours classifier finds the most similar labelled recordings.</p>
+                    <summary>How is the model learning?</summary>
+                    <p>You teach it by providing examples and the correct movement names. Python first uses linear interpolation to give every recording 90 equally spaced time points. It then summarises the recording using numbers such as its average, variation and rate of change before finding the most similar examples.</p>
+                    <p>The accuracy score checks the model by hiding one recording at a time and asking it to predict that recording from the others.</p>
+                    <p>“Unknown” is a confidence rule, not a fifth learned movement. When enabled, it replaces predictions whose highest neighbour vote is below 60%.</p>
                 </details>
             </section>
         </div>
