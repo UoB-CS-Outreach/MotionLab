@@ -115,7 +115,7 @@
                 <section class="movement-guide" aria-labelledby="movementGuideHeading">
                     <div class="movement-guide-heading">
                         <h3 id="movementGuideHeading">Choose a movement</h3>
-                        <p>Keep the phone in the position shown for the full three seconds.</p>
+                        <p>Follow the picture and description for the full three seconds.</p>
                     </div>
 
                     <div class="movement-grid">
@@ -160,8 +160,6 @@
                             <span>Hold the screen facing you. Draw small circles in the air.</span>
                         </button>
                     </div>
-
-                    <p class="movement-guide-tip"><strong>Start with Still and one other movement.</strong> Record each at least twice, repeating it in the same way. Add a third example if you have time.</p>
                 </section>
 
                 <div class="record-controls" id="recordControls">
@@ -228,69 +226,93 @@
                 </div>
             </section>
 
-            <section class="panel model-panel" aria-labelledby="modelHeading">
-                <div class="panel-heading">
-                    <div>
-                        <p class="step-label">Steps 3 &amp; 4</p>
-                        <h2 id="modelHeading">Train and test the model</h2>
-                    </div>
-                    <span class="model-state" id="modelState">Loading Python</span>
-                </div>
-                <p class="panel-intro">Once you have recorded two examples of at least two movements, train the model and see whether it can recognise them.</p>
-
-                <button class="button primary wide" id="trainBtn" type="button" disabled>Train activity model</button>
-                <p class="trainingHint muted" id="trainingHint">Collect at least two recordings for each of two movement labels.</p>
-
-                <div class="model-results" id="modelResults" hidden>
-                    <div class="accuracy-card">
-                        <span>Trial-by-trial test accuracy</span>
-                        <strong id="modelAccuracy">—</strong>
-                        <small id="accuracyDetail"></small>
-                    </div>
-                    <div class="prediction-card" id="predictionCard">
-                        <span>Live prediction</span>
-                        <strong id="predictionLabel">Waiting for movement...</strong>
-                        <div class="confidence-track" aria-hidden="true"><span id="confidenceBar"></span></div>
-                        <small id="predictionConfidence">Collecting a three-second window</small>
-                    </div>
-                    <div class="unknown-option">
-                        <label class="unknown-toggle" for="unknownPredictionToggle">
-                            <input id="unknownPredictionToggle" type="checkbox" checked>
-                            <span class="toggle-track" aria-hidden="true"><span></span></span>
-                            <span class="unknown-copy">
-                                <strong>Allow “Unknown”</strong>
-                                <small>Used when the highest movement receives less than 60% of the neighbour vote.</small>
-                            </span>
-                        </label>
-                    </div>
-                </div>
-
-                <section class="test-prediction" id="testPredictionPanel" hidden>
-                    <div class="test-prediction-heading">
+            <div class="model-column">
+                <section class="panel model-panel" aria-labelledby="modelHeading">
+                    <div class="panel-heading">
                         <div>
-                            <strong>Recorded prediction</strong>
-                            <p>Repeat one of your movements for three seconds. This test will not be added to the training examples.</p>
+                            <p class="step-label">Step 3</p>
+                            <h2 id="modelHeading">Train the model</h2>
                         </div>
-                        <button class="button secondary" id="testPredictionBtn" type="button" disabled>Record test movement</button>
+                        <span class="model-state" id="modelState">Loading Python</span>
                     </div>
-                    <div class="record-progress" id="testProgress" hidden aria-live="polite">
-                        <div class="progress-track"><span id="testProgressBar"></span></div>
-                        <strong id="testProgressText">Get ready...</strong>
+                    <p class="panel-intro">Once you have recorded two examples of at least two movements, train the model and check how well it recognises them.</p>
+
+                    <button class="button primary wide" id="trainBtn" type="button" disabled>Train activity model</button>
+                    <p class="trainingHint muted" id="trainingHint">Collect at least two recordings for each of two movement labels.</p>
+
+                    <div class="model-results" id="modelResults" hidden>
+                        <div class="accuracy-card">
+                            <span>Trial-by-trial test accuracy</span>
+                            <strong id="modelAccuracy">—</strong>
+                            <small id="accuracyDetail"></small>
+                        </div>
                     </div>
-                    <div class="test-prediction-result" id="testPredictionResult" hidden>
-                        <span>Predicted movement</span>
-                        <strong id="testPredictionLabel">—</strong>
-                        <small id="testPredictionConfidence"></small>
-                    </div>
+
+                    <details class="explain-box">
+                        <summary>How is the model learning?</summary>
+                        <p>You teach it by providing examples and the correct movement names. Python first uses linear interpolation to give every recording 90 equally spaced time points. It then summarises the recording using numbers such as its average, variation and rate of change before finding the most similar examples.</p>
+                        <p>The accuracy score checks the model by hiding one recording at a time and asking it to predict that recording from the others.</p>
+                    </details>
                 </section>
 
-                <details class="explain-box">
-                    <summary>How is the model learning?</summary>
-                    <p>You teach it by providing examples and the correct movement names. Python first uses linear interpolation to give every recording 90 equally spaced time points. It then summarises the recording using numbers such as its average, variation and rate of change before finding the most similar examples.</p>
-                    <p>The accuracy score checks the model by hiding one recording at a time and asking it to predict that recording from the others.</p>
-                    <p>“Unknown” is a confidence rule, not a fifth learned movement. When enabled, it replaces predictions whose highest neighbour vote is below 60%.</p>
-                </details>
-            </section>
+                <section class="panel test-panel" aria-labelledby="testModelHeading">
+                    <div class="panel-heading">
+                        <div>
+                            <p class="step-label">Step 4</p>
+                            <h2 id="testModelHeading">Test the model</h2>
+                        </div>
+                    </div>
+                    <p class="panel-intro">Repeat a trained movement and watch the live prediction, or record a separate three-second test.</p>
+
+                    <div class="test-model-locked" id="testModelLocked">
+                        Train the model in Step 3 to unlock prediction.
+                    </div>
+
+                    <div class="test-model-content" id="testPredictionPanel" hidden>
+                        <div class="prediction-card" id="predictionCard">
+                            <span>Live prediction</span>
+                            <strong id="predictionLabel">Waiting for movement...</strong>
+                            <div class="confidence-track" aria-hidden="true"><span id="confidenceBar"></span></div>
+                            <small id="predictionConfidence">Collecting a three-second window</small>
+                        </div>
+
+                        <div class="unknown-option">
+                            <label class="unknown-toggle" for="unknownPredictionToggle">
+                                <input id="unknownPredictionToggle" type="checkbox" checked>
+                                <span class="toggle-track" aria-hidden="true"><span></span></span>
+                                <span class="unknown-copy">
+                                    <strong>Allow “Unknown”</strong>
+                                    <small>Used when the highest movement receives less than 60% of the neighbour vote.</small>
+                                </span>
+                            </label>
+                        </div>
+
+                        <section class="test-prediction">
+                            <div class="test-prediction-heading">
+                                <div>
+                                    <strong>Recorded prediction</strong>
+                                    <p>Repeat one of your movements for three seconds. This test will not be added to the training examples.</p>
+                                </div>
+                                <button class="button secondary" id="testPredictionBtn" type="button" disabled>Record test movement</button>
+                            </div>
+                            <div class="record-progress" id="testProgress" hidden aria-live="polite">
+                                <div class="progress-track"><span id="testProgressBar"></span></div>
+                                <strong id="testProgressText">Get ready...</strong>
+                            </div>
+                            <div class="test-prediction-result" id="testPredictionResult" hidden>
+                                <span>Predicted movement</span>
+                                <strong id="testPredictionLabel">—</strong>
+                                <small id="testPredictionConfidence"></small>
+                            </div>
+                        </section>
+
+                        <details class="explain-box">
+                            <summary>What does “Unknown” mean?</summary>
+                            <p>“Unknown” is a confidence rule, not a fifth learned movement. When enabled, it replaces predictions whose highest neighbour vote is below 60%.</p>
+                        </details>
+                    </div>
+                </section>
+            </div>
         </div>
 
         <aside class="data-notice">

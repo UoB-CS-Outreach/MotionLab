@@ -160,6 +160,12 @@ h2 {
     box-shadow: var(--shadow);
 }
 
+.model-column {
+    display: grid;
+    gap: 22px;
+    align-content: start;
+}
+
 .panel-heading {
     margin-bottom: 22px;
     display: flex;
@@ -648,6 +654,10 @@ canvas {
     height: 74px;
 }
 
+.movement-vertical .motion-arrow.vertical {
+    left: calc(50% + 36px);
+}
+
 .motion-arrow.vertical::before,
 .motion-arrow.vertical::after {
     left: -6px;
@@ -717,14 +727,64 @@ canvas {
     transform: rotate(-22deg);
 }
 
-.movement-guide-tip {
-    margin: 12px 0 0;
-    padding: 10px 12px;
-    color: #40546b;
-    border-left: 3px solid var(--teal);
-    border-radius: 7px;
-    background: #eef8f6;
-    font-size: 0.77rem;
+@keyframes still-preview {
+    0%, 100% {
+        box-shadow: 0 4px 8px rgba(8, 31, 61, 0.13);
+    }
+    50% {
+        box-shadow:
+            0 4px 8px rgba(8, 31, 61, 0.13),
+            0 0 0 6px rgba(0, 169, 157, 0.14);
+    }
+}
+
+@keyframes side-to-side-preview {
+    0%, 100% {
+        transform: translateX(-50%) translateX(-15px);
+    }
+    50% {
+        transform: translateX(-50%) translateX(15px);
+    }
+}
+
+@keyframes up-and-down-preview {
+    0%, 100% {
+        transform: translateX(-50%) translateY(8px);
+    }
+    50% {
+        transform: translateX(-50%) translateY(-8px);
+    }
+}
+
+@keyframes circle-preview {
+    0%, 100% {
+        transform: translateX(-50%) translate(0, -9px);
+    }
+    25% {
+        transform: translateX(-50%) translate(9px, 0);
+    }
+    50% {
+        transform: translateX(-50%) translate(0, 9px);
+    }
+    75% {
+        transform: translateX(-50%) translate(-9px, 0);
+    }
+}
+
+.movement-card:is(:hover, :focus-visible) .movement-still .motion-phone {
+    animation: still-preview 900ms ease-in-out infinite;
+}
+
+.movement-card:is(:hover, :focus-visible) .movement-horizontal .motion-phone {
+    animation: side-to-side-preview 850ms ease-in-out infinite;
+}
+
+.movement-card:is(:hover, :focus-visible) .movement-vertical .motion-phone {
+    animation: up-and-down-preview 850ms ease-in-out infinite;
+}
+
+.movement-card:is(:hover, :focus-visible) .movement-circle .motion-phone {
+    animation: circle-preview 1100ms linear infinite;
 }
 
 .record-controls {
@@ -913,9 +973,7 @@ canvas {
 
 .model-results {
     margin-top: 19px;
-    display: grid;
-    grid-template-columns: 0.7fr 1.3fr;
-    gap: 11px;
+    display: block;
 }
 
 .accuracy-card,
@@ -974,10 +1032,22 @@ canvas {
 
 .unknown-option {
     grid-column: 1 / -1;
+    margin-top: 11px;
     padding: 12px 14px;
     border: 1px solid #d9e4ed;
     border-radius: 12px;
     background: #f8fafc;
+}
+
+.test-model-locked {
+    padding: 18px;
+    color: #708094;
+    border: 1px dashed #bdc9d6;
+    border-radius: 13px;
+    background: #f8fafc;
+    text-align: center;
+    font-size: 0.82rem;
+    font-weight: 700;
 }
 
 .unknown-toggle {
@@ -1312,8 +1382,7 @@ canvas {
     }
 
     .pair-layout,
-    .chart-grid,
-    .model-results {
+    .chart-grid {
         grid-template-columns: 1fr;
     }
 

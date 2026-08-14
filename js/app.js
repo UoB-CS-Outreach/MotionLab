@@ -449,6 +449,7 @@ function initDesktop() {
             : state.modelEngineReady ? "Not trained" : "Loading Python";
         $("modelResults").hidden = true;
         $("testPredictionPanel").hidden = true;
+        $("testModelLocked").hidden = false;
         $("testPredictionResult").hidden = true;
         $("predictionCard").classList.remove("unknown");
         $("testPredictionResult").classList.remove("unknown");
@@ -468,6 +469,7 @@ function initDesktop() {
             $("modelState").textContent = "Model trained";
             $("modelResults").hidden = false;
             $("testPredictionPanel").hidden = false;
+            $("testModelLocked").hidden = true;
             $("modelAccuracy").textContent = evaluation.accuracy === null ? "—" : `${Math.round(evaluation.accuracy * 100)}%`;
             $("accuracyDetail").textContent = evaluation.tested
                 ? `${evaluation.correct} of ${evaluation.tested} held-out trials correct`
