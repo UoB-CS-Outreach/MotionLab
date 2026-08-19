@@ -1,0 +1,1246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Motion Lab network check</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --ink: #081f3d;
+            --muted: #5a6b82;
+            --line: #d5deea;
+            --pass: #0f7a41;
+            --fail: #b3261e;
+            --warn: #8a6100;
+            --skip: #6b7a90;
+        }
+
+        body {
+            margin: 0;
+            padding: 24px 16px 72px;
+            font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+            color: var(--ink);
+            background: #f5f8fc;
+        }
+
+        main { max-width: 780px; margin: 0 auto; }
+        h1 { font-size: 25px; margin: 0 0 6px; }
+        h2 { font-size: 17px; margin: 0 0 10px; }
+        p { margin: 0 0 12px; }
+        .lede { color: var(--muted); margin-bottom: 20px; }
+
+        section {
+            background: #fff;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 16px 18px;
+            margin-bottom: 16px;
+        }
+
+        section.scope { background: #eef4fb; }
+        section.scope ul { margin: 6px 0 0; padding-left: 20px; color: var(--muted); font-size: 14px; }
+        section.scope li { margin-bottom: 3px; }
+
+        button {
+            font: inherit;
+            font-weight: 600;
+            color: #fff;
+            background: #14528f;
+            border: 0;
+            border-radius: 8px;
+            padding: 10px 16px;
+            margin: 0 6px 6px 0;
+            cursor: pointer;
+        }
+
+        button.secondary { background: #e7edf6; color: var(--ink); }
+        button:disabled { background: #9aa9bd; color: #fff; cursor: default; }
+
+        label { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 4px; }
+        label.inline { display: flex; gap: 8px; align-items: center; font-weight: 400; color: var(--muted); font-size: 14px; margin: 10px 0 0; }
+        label.inline input { width: auto; }
+
+        input, textarea {
+            font: inherit;
+            width: 100%;
+            box-sizing: border-box;
+            padding: 8px 10px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #fff;
+            color: var(--ink);
+        }
+
+        .check { border-top: 1px solid var(--line); padding: 11px 0; }
+        .check:first-child { border-top: 0; }
+        .check-head { display: flex; gap: 10px; align-items: baseline; font-weight: 600; }
+        .state { font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; min-width: 52px; }
+        .state.pass { color: var(--pass); }
+        .state.fail { color: var(--fail); }
+        .state.warn { color: var(--warn); }
+        .state.skip { color: var(--skip); }
+        .state.busy { color: var(--muted); }
+        .detail { color: var(--muted); font-size: 14px; margin-top: 3px; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+        #verdict, #summaryText { white-space: pre-wrap; font-size: 15px; }
+        #summaryText { font-family: ui-monospace, Consolas, monospace; font-size: 12px; max-height: 320px; overflow: auto; background: #f7fafd; border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+
+        code { background: #eef3f9; padding: 1px 5px; border-radius: 4px; font-size: 14px; overflow-wrap: anywhere; }
+        .hidden { display: none; }
+        .pairing-link { word-break: break-all; font-size: 13px; background: #f7fafd; border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin-top: 10px; }
+        #qrCode { margin-top: 12px; }
+        #qrCode img, #qrCode canvas { display: block; }
+    </style>
+</head>
+<body>
+<main>
+    <h1>Motion Lab network check</h1>
+    <p class="lede">
+        A throwaway diagnostic for the Motion Lab open-day activity. Run it on the lab machine, on the venue
+        network, then download the report. Nothing runs until you press a button.
+    </p>
+
+    <section class="scope">
+        <h2>What this page does and does not do</h2>
+        <p style="font-size: 14px; margin-bottom: 4px;"><strong>It does:</strong></p>
+        <ul>
+            <li>Make ordinary web requests to the services this activity already uses (GitHub Pages, jsDelivr, the PeerJS broker) and to a few free alternatives we might switch to.</li>
+            <li>Ask the browser which connection routes it can find, the same way any video-call site does.</li>
+            <li>Record browser and connection capabilities, kept in this tab until you press Download.</li>
+        </ul>
+        <p style="font-size: 14px; margin: 10px 0 4px;"><strong>It does not:</strong></p>
+        <ul>
+            <li>Scan the network, probe other machines, or touch anything on this computer.</li>
+            <li>Read files, cookies, browsing history, or any personal data.</li>
+            <li>Send results anywhere — the report is only saved if you choose to download it.</li>
+            <li>Include IP addresses in the report unless you tick the box below.</li>
+        </ul>
+    </section>
+
+    <section id="phonePanel" class="hidden">
+        <h2>Phone side</h2>
+        <p class="detail" id="phoneIntro">You opened a pairing link from the lab machine. Press connect to test the link.</p>
+        <button id="phoneConnect">Connect to the computer</button>
+        <div id="phoneResults" style="margin-top: 12px;"></div>
+    </section>
+
+    <section id="mainPanel">
+        <h2>1. Network checks</h2>
+        <p class="detail" style="margin-top: 0;">Takes about a minute. Every check has a time limit, so a blocked service cannot hang the run.</p>
+        <label for="notes">Notes for later (room, machine, wired or wifi)</label>
+        <input id="notes" placeholder="e.g. Lab 1.15, wired desktop, Chrome, campus network" spellcheck="false">
+        <label class="inline"><input type="checkbox" id="includeIps"> Include IP addresses in the report (useful if you show it to IT)</label>
+        <p></p>
+        <button id="run">Run all checks</button>
+        <div id="results" style="margin-top: 12px;"></div>
+    </section>
+
+    <section>
+        <h2>2. Verdict</h2>
+        <div id="verdict" class="detail">Not run yet.</div>
+    </section>
+
+    <section>
+        <h2>3. Live pairing test (optional)</h2>
+        <p class="detail" style="margin-top: 0;">
+            The definitive test: pair a real phone with this machine and see which route the data actually takes.
+            Start it here, then scan or open the link on a phone.
+        </p>
+        <button id="startPairing">Start pairing test</button>
+        <div id="pairingResults" style="margin-top: 12px;"></div>
+        <div id="qrCode"></div>
+        <div id="pairingLink" class="pairing-link hidden"></div>
+    </section>
+
+    <section>
+        <h2>4. Test a TURN server (optional)</h2>
+        <p class="detail" style="margin-top: 0;">
+            If you get hold of TURN credentials, check here whether they yield <code>relay</code> candidates on this
+            network. Credentials are never written into the downloaded report.
+        </p>
+        <label for="turnUrl">TURN URL</label>
+        <input id="turnUrl" value="turns:example.com:443?transport=tcp" spellcheck="false">
+        <label for="turnUser">Username</label>
+        <input id="turnUser" spellcheck="false" autocomplete="off">
+        <label for="turnPass">Credential</label>
+        <input id="turnPass" spellcheck="false" autocomplete="off">
+        <p></p>
+        <button id="runTurn">Test this TURN server</button>
+        <div id="turnResults" style="margin-top: 12px;"></div>
+    </section>
+
+    <section>
+        <h2>5. Motion sensors (run this part on a phone)</h2>
+        <p class="detail" style="margin-top: 0;">Checks that the phone will actually give up its accelerometer readings. Asks permission on iOS.</p>
+        <button id="runSensors">Test motion sensors</button>
+        <div id="sensorResults" style="margin-top: 12px;"></div>
+    </section>
+
+    <section>
+        <h2>6. Report</h2>
+        <p class="detail" style="margin-top: 0;">Everything gathered so far, including any checks that failed to run.</p>
+        <button id="downloadJson">Download report (.json)</button>
+        <button id="downloadText" class="secondary">Download summary (.txt)</button>
+        <button id="copyReport" class="secondary">Copy to clipboard</button>
+        <div id="downloadNote" class="detail"></div>
+        <div id="summaryText" style="margin-top: 10px;">Nothing collected yet.</div>
+    </section>
+</main>
+
+<script>
+    "use strict";
+
+    // ---------------------------------------------------------------- report
+
+    const REPORT = {
+        tool: "motionlab-network-check",
+        version: 2,
+        generatedAt: new Date().toISOString(),
+        notes: "",
+        context: {},
+        capabilities: {},
+        checks: [],
+        recommendations: [],
+        errors: [],
+    };
+
+    window.addEventListener("error", event => {
+        REPORT.errors.push({kind: "error", message: String(event.message ?? ""), line: event.lineno ?? null});
+    });
+    window.addEventListener("unhandledrejection", event => {
+        REPORT.errors.push({kind: "rejection", message: String(event.reason?.message ?? event.reason ?? "")});
+    });
+
+    function attempt(fn, fallback = null) {
+        try {
+            const value = fn();
+            return value === undefined ? fallback : value;
+        } catch (error) {
+            REPORT.errors.push({kind: "collect", message: String(error?.message ?? error)});
+            return fallback;
+        }
+    }
+
+    function includeIps() {
+        return attempt(() => document.getElementById("includeIps").checked, false);
+    }
+
+    function maskAddress(value) {
+        if (!value) return null;
+        if (includeIps()) return value;
+        const text = String(value);
+        if (text.endsWith(".local")) return "mdns-hostname.local";
+        if (text.includes(":")) return text.replace(/^\[/, "").split(":")[0] + ":hidden";
+        const parts = text.split(".");
+        return parts.length === 4 ? `${parts[0]}.${parts[1]}.hidden.hidden` : "hidden";
+    }
+
+    // ------------------------------------------------------------------- ui
+
+    function addCheck(container, title) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "check";
+        const head = document.createElement("div");
+        head.className = "check-head";
+        const chip = document.createElement("span");
+        chip.className = "state busy";
+        chip.textContent = "running";
+        const label = document.createElement("span");
+        label.textContent = title;
+        head.append(chip, label);
+        const detail = document.createElement("div");
+        detail.className = "detail";
+        wrapper.append(head, detail);
+        container.appendChild(wrapper);
+        return {
+            set(state, text) {
+                chip.className = `state ${state}`;
+                chip.textContent = state === "pass" ? "ok" : state;
+                detail.textContent = text ?? "";
+            },
+        };
+    }
+
+    // -------------------------------------------------------------- helpers
+
+    function settle(promise, milliseconds, onTimeout) {
+        return new Promise(resolve => {
+            let finished = false;
+            const finish = value => {
+                if (finished) return;
+                finished = true;
+                clearTimeout(timer);
+                resolve(value);
+            };
+            const timer = setTimeout(() => finish(onTimeout()), milliseconds);
+            Promise.resolve()
+                .then(() => promise)
+                .then(finish, error => finish({status: "warn", detail: `Check errored: ${error?.message ?? error}`}));
+        });
+    }
+
+    async function runCheck(container, id, title, fn, milliseconds = 20000) {
+        const row = addCheck(container, title);
+        const started = performance.now();
+        const outcome = await settle(
+            Promise.resolve().then(fn),
+            milliseconds,
+            () => ({status: "warn", detail: "Timed out. Recorded as unknown so the rest of the run continues."}),
+        );
+        const record = {
+            id,
+            title,
+            status: outcome?.status ?? "warn",
+            detail: outcome?.detail ?? "",
+            data: outcome?.data ?? null,
+            milliseconds: Math.round(performance.now() - started),
+        };
+        REPORT.checks = REPORT.checks.filter(existing => existing.id !== id);
+        REPORT.checks.push(record);
+        row.set(record.status, record.detail);
+        refreshSummary();
+        return record;
+    }
+
+    function findCheck(id) {
+        return REPORT.checks.find(check => check.id === id) ?? null;
+    }
+
+    async function probeUrl(url, milliseconds = 10000) {
+        const started = performance.now();
+        const controller = attempt(() => new AbortController(), null);
+        const timer = controller ? setTimeout(() => attempt(() => controller.abort()), milliseconds) : null;
+        try {
+            const response = await fetch(url, {
+                mode: "no-cors",
+                cache: "no-store",
+                signal: controller?.signal,
+            });
+            return {url, ok: true, milliseconds: Math.round(performance.now() - started), responseType: response.type};
+        } catch (error) {
+            return {url, ok: false, milliseconds: Math.round(performance.now() - started), error: String(error?.message ?? error)};
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
+    }
+
+    function probeSocket(url, milliseconds = 9000) {
+        const started = performance.now();
+        return new Promise(resolve => {
+            let socket = null;
+            let finished = false;
+            const finish = outcome => {
+                if (finished) return;
+                finished = true;
+                clearTimeout(timer);
+                attempt(() => socket?.close());
+                resolve({url: url.split("?")[0], milliseconds: Math.round(performance.now() - started), ...outcome});
+            };
+            const timer = setTimeout(() => finish({ok: false, reason: "timed out"}), milliseconds);
+            if (typeof WebSocket !== "function") {
+                finish({ok: false, reason: "WebSocket unsupported in this browser"});
+                return;
+            }
+            try {
+                socket = new WebSocket(url);
+            } catch (error) {
+                finish({ok: false, reason: String(error?.message ?? error)});
+                return;
+            }
+            socket.onopen = () => finish({ok: true});
+            socket.onerror = () => finish({ok: false, reason: "refused or blocked"});
+            socket.onclose = event => finish({ok: false, reason: `closed before opening (code ${event?.code ?? "?"})`});
+        });
+    }
+
+    function describeCandidate(candidate) {
+        const text = candidate?.candidate ?? "";
+        const parts = text.split(" ");
+        const typeMatch = /\btyp (\w+)/.exec(text);
+        return {
+            type: candidate?.type ?? (typeMatch ? typeMatch[1] : "unknown"),
+            protocol: candidate?.protocol ?? (parts[2] ? parts[2].toLowerCase() : null),
+            address: maskAddress(candidate?.address ?? parts[4] ?? null),
+            port: candidate?.port ?? (Number(parts[5]) || null),
+            relatedPort: candidate?.relatedPort ?? null,
+            relayProtocol: candidate?.relayProtocol ?? null,
+        };
+    }
+
+    async function gatherIce(iceServers, milliseconds = 9000) {
+        const counts = {host: 0, srflx: 0, relay: 0, prflx: 0, unknown: 0};
+        const candidates = [];
+        const errors = [];
+        if (typeof RTCPeerConnection !== "function") {
+            return {supported: false, counts, candidates, errors, note: "WebRTC unavailable in this browser"};
+        }
+        let connection = null;
+        try {
+            connection = new RTCPeerConnection({iceServers, iceTransportPolicy: "all"});
+        } catch (error) {
+            return {supported: true, counts, candidates, errors, note: `Could not create connection: ${error?.message ?? error}`};
+        }
+        try {
+            connection.addEventListener("icecandidateerror", event => {
+                const entry = `${event?.url ?? "?"} → ${event?.errorCode ?? "?"} ${event?.errorText ?? ""}`.trim();
+                if (!errors.includes(entry)) errors.push(entry);
+            });
+            connection.createDataChannel("probe");
+            await connection.setLocalDescription(await connection.createOffer());
+            await new Promise(resolve => {
+                const timer = setTimeout(resolve, milliseconds);
+                connection.addEventListener("icecandidate", event => {
+                    if (!event.candidate) {
+                        clearTimeout(timer);
+                        resolve();
+                        return;
+                    }
+                    const parsed = describeCandidate(event.candidate);
+                    counts[parsed.type] = (counts[parsed.type] ?? 0) + 1;
+                    candidates.push(parsed);
+                });
+            });
+        } catch (error) {
+            errors.push(`gathering failed: ${error?.message ?? error}`);
+        } finally {
+            attempt(() => connection.close());
+        }
+        return {supported: true, counts, candidates, errors};
+    }
+
+    async function describeSelectedRoute(peerConnection) {
+        if (!peerConnection || typeof peerConnection.getStats !== "function") return null;
+        try {
+            const stats = await peerConnection.getStats();
+            const entries = new Map();
+            stats.forEach(entry => entries.set(entry.id, entry));
+            let best = null;
+            stats.forEach(entry => {
+                if (entry.type !== "candidate-pair") return;
+                const chosen = entry.selected || entry.nominated || entry.state === "succeeded";
+                if (!chosen) return;
+                if (!best || (entry.bytesReceived ?? 0) >= (best.bytesReceived ?? 0)) best = entry;
+            });
+            if (!best) return null;
+            const local = entries.get(best.localCandidateId) ?? {};
+            const remote = entries.get(best.remoteCandidateId) ?? {};
+            return {
+                localType: local.candidateType ?? null,
+                remoteType: remote.candidateType ?? null,
+                protocol: local.protocol ?? null,
+                relayProtocol: local.relayProtocol ?? null,
+                roundTripMs: best.currentRoundTripTime != null ? Math.round(best.currentRoundTripTime * 1000) : null,
+                bytesReceived: best.bytesReceived ?? null,
+            };
+        } catch (error) {
+            return {error: String(error?.message ?? error)};
+        }
+    }
+
+    function loadScript(source, milliseconds = 12000) {
+        return new Promise((resolve, reject) => {
+            const element = document.createElement("script");
+            const timer = setTimeout(() => reject(new Error("timed out")), milliseconds);
+            element.src = source;
+            element.onload = () => {
+                clearTimeout(timer);
+                resolve(true);
+            };
+            element.onerror = () => {
+                clearTimeout(timer);
+                reject(new Error("blocked or unreachable"));
+            };
+            document.head.appendChild(element);
+        });
+    }
+
+    // ---------------------------------------------------------- environment
+
+    function collectContext() {
+        const nav = attempt(() => navigator, {}) ?? {};
+        const connection = attempt(() => nav.connection, {}) ?? {};
+        // Trimmed: opened as a data: or blob: URL, location.href is the whole page and would swamp the report.
+        const trim = value => (typeof value === "string" && value.length > 200 ? `${value.slice(0, 200)}…` : value);
+        return {
+            pageUrl: attempt(() => trim(location.href.split("?")[0])),
+            origin: attempt(() => trim(location.origin)),
+            secureContext: attempt(() => window.isSecureContext),
+            userAgent: attempt(() => nav.userAgent),
+            platform: attempt(() => nav.userAgentData?.platform ?? nav.platform),
+            looksMobile: attempt(() => nav.userAgentData?.mobile ?? /Mobi|Android|iPhone|iPad/.test(nav.userAgent ?? "")),
+            hardwareConcurrency: attempt(() => nav.hardwareConcurrency),
+            deviceMemoryGb: attempt(() => nav.deviceMemory),
+            timeZone: attempt(() => Intl.DateTimeFormat().resolvedOptions().timeZone),
+            screen: {
+                width: attempt(() => screen.width),
+                height: attempt(() => screen.height),
+                pixelRatio: attempt(() => window.devicePixelRatio),
+            },
+            networkHint: {
+                effectiveType: connection.effectiveType ?? null,
+                downlinkMbps: connection.downlink ?? null,
+                roundTripMs: connection.rtt ?? null,
+                saveData: connection.saveData ?? null,
+            },
+        };
+    }
+
+    function collectCapabilities() {
+        return {
+            webRtc: attempt(() => typeof RTCPeerConnection === "function", false),
+            webSocket: attempt(() => typeof WebSocket === "function", false),
+            webAssembly: attempt(() => typeof WebAssembly === "object", false),
+            sharedArrayBuffer: attempt(() => typeof SharedArrayBuffer === "function", false),
+            serviceWorker: attempt(() => "serviceWorker" in navigator, false),
+            deviceMotion: attempt(() => typeof DeviceMotionEvent !== "undefined", false),
+            deviceMotionNeedsPermission: attempt(
+                () => typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function",
+                false,
+            ),
+            deviceOrientation: attempt(() => typeof DeviceOrientationEvent !== "undefined", false),
+            // Storage is unavailable in some sandboxes; a throw here is expected, not a fault.
+            localStorage: attempt(() => Boolean(window.localStorage), false),
+            clipboard: attempt(() => Boolean(navigator.clipboard), false),
+            downloads: attempt(() => "download" in document.createElement("a"), false),
+        };
+    }
+
+    // --------------------------------------------------------------- checks
+
+    const ASSETS = [
+        {id: "asset-pages", title: "Activity page loads (GitHub Pages)", url: "https://uob-cs-outreach.github.io/MotionLab/", critical: true},
+        {id: "asset-pyodide", title: "Pyodide loader reachable (jsDelivr)", url: "https://cdn.jsdelivr.net/pyodide/v0.29.2/full/pyodide.js", critical: true},
+        {id: "asset-peerjs", title: "PeerJS library reachable (jsDelivr)", url: "https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js", critical: true},
+        {id: "asset-qrcode", title: "QR code library reachable (cdnjs)", url: "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js", critical: false},
+    ];
+
+    const STUN_SERVERS = [
+        {label: "Google (UDP 19302)", url: "stun:stun.l.google.com:19302"},
+        {label: "Google alternate (UDP 19302)", url: "stun:stun1.l.google.com:19302"},
+        {label: "Cloudflare (UDP 3478)", url: "stun:stun.cloudflare.com:3478"},
+        {label: "Metered (UDP 80)", url: "stun:stun.relay.metered.ca:80"},
+        {label: "Nextcloud (UDP 443)", url: "stun:stun.nextcloud.com:443"},
+    ];
+
+    const PEERJS_DEFAULT_ICE = [
+        {urls: "stun:stun.l.google.com:19302"},
+        {
+            urls: ["turn:eu-0.turn.peerjs.com:3478", "turn:us-0.turn.peerjs.com:3478"],
+            username: "peerjs",
+            credential: "peerjsp",
+        },
+    ];
+
+    const SOCKET_TARGETS = [
+        {
+            id: "socket-peerjs",
+            title: "PeerJS broker reachable (WSS 443) — used by the activity today",
+            url: () => {
+                const id = Math.random().toString(36).slice(2, 18);
+                const token = Math.random().toString(36).slice(2, 18);
+                return `wss://0.peerjs.com/peerjs?key=peerjs&id=${id}&token=${token}&version=1.5.5`;
+            },
+        },
+        {
+            id: "socket-ably",
+            title: "Ably reachable (free-tier relay option)",
+            url: () => "wss://realtime.ably.io/",
+        },
+    ];
+
+    // Tried in turn: a single echo service being down must not be mistaken for a blocked network.
+    const GENERIC_SOCKETS = [
+        "wss://echo.websocket.events",
+        "wss://ws.postman-echo.com/raw",
+        "wss://echo.websocket.org",
+    ];
+
+    async function checkAssets(container) {
+        for (const asset of ASSETS) {
+            await runCheck(container, asset.id, asset.title, async () => {
+                const result = await probeUrl(asset.url);
+                return {
+                    status: result.ok ? "pass" : (asset.critical ? "fail" : "warn"),
+                    detail: result.ok
+                        ? `Reachable in ${result.milliseconds} ms.`
+                        : `Not reachable (${result.error}). ${asset.critical ? "The activity cannot work without this." : "Only affects the QR code."}`,
+                    data: result,
+                };
+            }, 14000);
+        }
+    }
+
+    async function checkGenericSockets(container) {
+        await runCheck(container, "socket-generic", "WebSockets allowed in general", async () => {
+            const results = [];
+            for (const url of GENERIC_SOCKETS) {
+                const result = await probeSocket(url, 8000);
+                results.push(result);
+                if (result.ok) break;
+            }
+            const working = results.find(result => result.ok);
+            return {
+                status: working ? "pass" : "fail",
+                detail: working
+                    ? `Opened ${working.url} in ${working.milliseconds} ms, so outbound WebSockets are permitted.`
+                    : `None of ${results.length} public echo services opened. Either every WebSocket is blocked, or all the test services are down — read this alongside the PeerJS and Ably results above.`,
+                data: results,
+            };
+        }, 30000);
+    }
+
+    async function checkSockets(container) {
+        for (const target of SOCKET_TARGETS) {
+            await runCheck(container, target.id, target.title, async () => {
+                const result = await probeSocket(target.url());
+                return {
+                    status: result.ok ? "pass" : "fail",
+                    detail: result.ok
+                        ? `Socket opened in ${result.milliseconds} ms.`
+                        : `Could not open (${result.reason}).`,
+                    data: result,
+                };
+            }, 12000);
+        }
+    }
+
+    async function checkStunServers(container) {
+        await runCheck(container, "ice-stun", "Which UDP routes out of this network work (STUN)", async () => {
+            const results = [];
+            for (const server of STUN_SERVERS) {
+                const gathered = await gatherIce([{urls: server.url}], 7000);
+                const reflexive = gathered.candidates.filter(candidate => candidate.type === "srflx");
+                results.push({
+                    label: server.label,
+                    url: server.url,
+                    reachable: reflexive.length > 0,
+                    mappedPorts: reflexive.map(candidate => candidate.port),
+                    mappedAddresses: [...new Set(reflexive.map(candidate => candidate.address))],
+                    errors: gathered.errors,
+                });
+            }
+            const working = results.filter(result => result.reachable);
+            const lines = results.map(result => `  ${result.reachable ? "yes" : "no "}  ${result.label}`);
+            return {
+                status: working.length > 0 ? "pass" : "fail",
+                detail: working.length > 0
+                    ? `${working.length} of ${results.length} reachable:\n${lines.join("\n")}\nUDP does leave this network, so a TURN server on a working port would also work.`
+                    : `None reachable:\n${lines.join("\n")}\nUDP appears to be blocked entirely. Only TCP/TLS relaying on port 443, or a WebSocket relay, can work here.`,
+                data: results,
+            };
+        }, 60000);
+    }
+
+    async function checkNatType(container) {
+        await runCheck(container, "ice-nat", "NAT behaviour (does direct pairing stand a chance?)", async () => {
+            const gathered = await gatherIce([
+                {urls: "stun:stun.l.google.com:19302"},
+                {urls: "stun:stun1.l.google.com:19302"},
+                {urls: "stun:stun.cloudflare.com:3478"},
+            ], 9000);
+            const reflexive = gathered.candidates.filter(candidate => candidate.type === "srflx");
+            if (reflexive.length === 0) {
+                return {
+                    status: "warn",
+                    detail: "No reflexive candidates, so NAT behaviour could not be measured. This usually means UDP is blocked.",
+                    data: {verdict: "unknown", candidates: reflexive},
+                };
+            }
+            // Only candidates sharing a local base port can be compared; without that the test is meaningless.
+            const comparable = reflexive.filter(candidate => candidate.relatedPort != null);
+            if (comparable.length < 2) {
+                return {
+                    status: "warn",
+                    detail: `Only ${comparable.length} comparable mapping(s), so NAT type could not be determined. Not a problem in itself — the live pairing test in section 3 is the real answer.`,
+                    data: {verdict: "unknown", reflexiveCount: reflexive.length, comparableCount: comparable.length},
+                };
+            }
+            const groups = new Map();
+            comparable.forEach(candidate => {
+                const key = candidate.relatedPort;
+                if (!groups.has(key)) groups.set(key, new Set());
+                groups.get(key).add(candidate.port);
+            });
+            const mappings = [...groups.entries()].map(([base, ports]) => ({basePort: base, mappedPorts: [...ports]}));
+            const symmetric = mappings.some(mapping => mapping.mappedPorts.length > 1);
+            return {
+                status: symmetric ? "fail" : "pass",
+                detail: symmetric
+                    ? `Symmetric NAT: one local port ${mappings.filter(m => m.mappedPorts.length > 1).map(m => `(${m.basePort} → ${m.mappedPorts.join(", ")})`).join(" ")} was given a different public port per destination. Two devices behind this cannot connect directly, so a relay is required.`
+                    : "Cone-style NAT: the same public port was reused across destinations, so direct connections are possible in principle.",
+                data: {verdict: symmetric ? "symmetric" : "cone", mappings},
+            };
+        }, 20000);
+    }
+
+    async function checkPeerJsDefaults(container) {
+        await runCheck(container, "ice-peerjs-defaults", "Routes available with the activity's current settings", async () => {
+            const gathered = await gatherIce(PEERJS_DEFAULT_ICE, 9000);
+            const counts = gathered.counts;
+            const usable = counts.srflx + counts.relay;
+            return {
+                status: counts.relay > 0 ? "pass" : (usable > 0 ? "warn" : "fail"),
+                detail: `host ${counts.host}, server-reflexive ${counts.srflx}, relay ${counts.relay}.\n` +
+                    (counts.relay > 0
+                        ? "A relay route exists."
+                        : "No relay route. PeerJS's built-in TURN servers (eu-0/us-0.turn.peerjs.com) no longer exist in DNS, so the activity currently has no fallback when a direct connection is impossible.") +
+                    (gathered.errors.length ? `\nICE errors: ${gathered.errors.join(" | ")}` : ""),
+                data: gathered,
+            };
+        }, 20000);
+    }
+
+    async function checkAlternativeServices(container) {
+        await runCheck(container, "alternatives", "Free alternatives we might switch to (HTTPS reachability)", async () => {
+            const targets = [
+                {label: "Ably (free tier relay)", url: "https://rest.ably.io/time"},
+                {label: "Firebase (free tier relay)", url: "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js"},
+                {label: "Supabase (free tier relay)", url: "https://supabase.com/favicon.ico"},
+                {label: "Cloudflare (TURN provider)", url: "https://www.cloudflare.com/favicon.ico"},
+            ];
+            const results = [];
+            for (const target of targets) {
+                const result = await probeUrl(target.url, 8000);
+                results.push({label: target.label, ok: result.ok, milliseconds: result.milliseconds, error: result.error ?? null});
+            }
+            const reachable = results.filter(result => result.ok);
+            return {
+                status: reachable.length > 0 ? "pass" : "warn",
+                detail: results.map(result => `  ${result.ok ? "yes" : "no "}  ${result.label}`).join("\n"),
+                data: results,
+            };
+        }, 45000);
+    }
+
+    async function checkDownloadWeight(container) {
+        await runCheck(container, "bandwidth", "Rough download speed (Pyodide is a large download)", async () => {
+            const url = "https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js";
+            const started = performance.now();
+            try {
+                const response = await fetch(url, {cache: "no-store"});
+                const text = await response.text();
+                const seconds = (performance.now() - started) / 1000;
+                const kilobytes = text.length / 1024;
+                const rate = kilobytes / Math.max(seconds, 0.001);
+                return {
+                    status: "pass",
+                    detail: `Fetched ${Math.round(kilobytes)} KB in ${seconds.toFixed(2)} s (~${Math.round(rate)} KB/s). Pyodide is roughly 10 MB, so expect about ${Math.round((10 * 1024) / Math.max(rate, 1))} s on first load.`,
+                    data: {kilobytes: Math.round(kilobytes), seconds: Number(seconds.toFixed(2)), kilobytesPerSecond: Math.round(rate)},
+                };
+            } catch (error) {
+                return {
+                    status: "warn",
+                    detail: `Could not measure (${error?.message ?? error}). This is often a CORS restriction rather than a block.`,
+                    data: null,
+                };
+            }
+        }, 25000);
+    }
+
+    // ------------------------------------------------------ recommendations
+
+    function buildRecommendations() {
+        const lines = [];
+        const status = id => findCheck(id)?.status ?? "missing";
+        const data = id => findCheck(id)?.data ?? null;
+
+        const pagesOk = status("asset-pages") === "pass";
+        const pyodideOk = status("asset-pyodide") === "pass";
+        const brokerOk = status("socket-peerjs") === "pass";
+        const genericSocketOk = status("socket-generic") === "pass";
+        const ablyOk = status("socket-ably") === "pass";
+        const stunResults = data("ice-stun") ?? [];
+        const anyUdp = Array.isArray(stunResults) && stunResults.some(result => result.reachable);
+        const natVerdict = data("ice-nat")?.verdict ?? "unknown";
+        const relayCount = data("ice-peerjs-defaults")?.counts?.relay ?? 0;
+
+        if (!pagesOk) lines.push("The activity page itself is blocked here. Nothing else matters until IT allows github.io, or you host the page elsewhere.");
+        if (!pyodideOk) lines.push("cdn.jsdelivr.net is blocked, so the Python model cannot load. Ask IT to allow it, or bundle Pyodide with the activity.");
+
+        if (!anyUdp) {
+            lines.push("UDP does not leave this network. Direct phone-to-computer connections are impossible here regardless of settings.");
+        } else {
+            const ports = stunResults.filter(result => result.reachable).map(result => result.label).join(", ");
+            lines.push(`UDP does get out on: ${ports}. A TURN server on one of those ports would work.`);
+        }
+
+        if (natVerdict === "symmetric") lines.push("This network uses symmetric NAT, so a relay is mandatory even if UDP is open.");
+        if (relayCount === 0) lines.push("Confirmed: the activity has no working relay configured, because PeerJS's built-in TURN servers no longer exist.");
+
+        if (!brokerOk && genericSocketOk) {
+            lines.push("WebSockets work in general but the PeerJS broker specifically does not. Self-hosting a broker, or moving to a relay service, would sidestep this.");
+        }
+        if (!brokerOk && !genericSocketOk) {
+            lines.push("No WebSocket connections succeed at all, which points to a filtering proxy. A WebSocket relay would not help here; treat the standalone phone option as the realistic fallback.");
+        }
+        if (ablyOk) {
+            lines.push("Ably's realtime endpoint is reachable, so the free-tier WebSocket relay approach is viable on this network.");
+        }
+
+        if (pagesOk && brokerOk && anyUdp && natVerdict !== "symmetric") {
+            lines.push("This network looks capable of direct pairing. If a real phone still fails, suspect client isolation on the wifi, which blocks device-to-device traffic even between devices on the same SSID. The live pairing test in section 3 will settle it.");
+        }
+
+        lines.push("Fallbacks that need no network at all: the built-in simulator, or running the activity standalone on the phone.");
+
+        REPORT.recommendations = lines;
+        return lines;
+    }
+
+    // -------------------------------------------------------------- summary
+
+    function buildSummaryText() {
+        const lines = [];
+        lines.push("Motion Lab network check");
+        lines.push(`Generated: ${REPORT.generatedAt}`);
+        if (REPORT.notes) lines.push(`Notes: ${REPORT.notes}`);
+        lines.push(`Browser: ${REPORT.context.userAgent ?? "unknown"}`);
+        lines.push(`Secure context: ${REPORT.context.secureContext}`);
+        lines.push("");
+        lines.push("CHECKS");
+        REPORT.checks.forEach(check => {
+            lines.push(`[${(check.status ?? "?").toUpperCase()}] ${check.title} (${check.milliseconds} ms)`);
+            if (check.detail) check.detail.split("\n").forEach(line => lines.push(`      ${line}`));
+        });
+        if (REPORT.recommendations.length) {
+            lines.push("");
+            lines.push("WHAT THIS MEANS");
+            REPORT.recommendations.forEach(line => lines.push(`  - ${line}`));
+        }
+        if (REPORT.errors.length) {
+            lines.push("");
+            lines.push("COLLECTION PROBLEMS (the run continued anyway)");
+            REPORT.errors.forEach(error => lines.push(`  - ${error.kind}: ${error.message}`));
+        }
+        return lines.join("\n");
+    }
+
+    function refreshSummary() {
+        REPORT.notes = attempt(() => document.getElementById("notes").value.trim(), "");
+        attempt(() => {
+            document.getElementById("summaryText").textContent = buildSummaryText();
+        });
+    }
+
+    function saveFile(filename, text, type) {
+        const note = document.getElementById("downloadNote");
+        try {
+            const blob = new Blob([text], {type});
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement("a");
+            anchor.href = url;
+            anchor.download = filename;
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            setTimeout(() => attempt(() => URL.revokeObjectURL(url)), 5000);
+            note.textContent = `Saved ${filename} to your downloads.`;
+        } catch (error) {
+            note.textContent = `Download blocked (${error?.message ?? error}). Use the copy button, or select the text below and copy it manually.`;
+        }
+    }
+
+    function timestamp() {
+        return new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    }
+
+    // ---------------------------------------------------------- main runner
+
+    async function runAll() {
+        const button = document.getElementById("run");
+        const container = document.getElementById("results");
+        const verdict = document.getElementById("verdict");
+        button.disabled = true;
+        button.textContent = "Running…";
+        container.innerHTML = "";
+        REPORT.checks = [];
+        REPORT.generatedAt = new Date().toISOString();
+        REPORT.notes = attempt(() => document.getElementById("notes").value.trim(), "");
+        REPORT.context = collectContext();
+        REPORT.capabilities = collectCapabilities();
+        verdict.textContent = "Running…";
+
+        const phases = [
+            checkAssets,
+            checkSockets,
+            checkGenericSockets,
+            checkStunServers,
+            checkNatType,
+            checkPeerJsDefaults,
+            checkAlternativeServices,
+            checkDownloadWeight,
+        ];
+        for (const phase of phases) {
+            try {
+                await phase(container);
+            } catch (error) {
+                REPORT.errors.push({kind: "phase", message: String(error?.message ?? error)});
+            }
+        }
+
+        verdict.textContent = buildRecommendations().map(line => `• ${line}`).join("\n");
+        refreshSummary();
+        button.disabled = false;
+        button.textContent = "Run all checks again";
+    }
+
+    // --------------------------------------------------------- pairing test
+
+    const PAIRING = {peer: null, connection: null, samples: 0, openedAt: 0};
+
+    async function ensurePeerLibrary() {
+        if (typeof window.Peer === "function") return true;
+        await loadScript("https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js");
+        return typeof window.Peer === "function";
+    }
+
+    async function startPairingTest() {
+        const button = document.getElementById("startPairing");
+        const container = document.getElementById("pairingResults");
+        button.disabled = true;
+        container.innerHTML = "";
+
+        const setupRow = addCheck(container, "Pairing session");
+        let available = false;
+        try {
+            available = await ensurePeerLibrary();
+        } catch (error) {
+            setupRow.set("fail", `PeerJS library could not load (${error?.message ?? error}).`);
+            REPORT.checks.push({id: "pairing", title: "Live pairing test", status: "fail", detail: "PeerJS library blocked", data: null, milliseconds: 0});
+            button.disabled = false;
+            refreshSummary();
+            return;
+        }
+        if (!available) {
+            setupRow.set("fail", "PeerJS library did not load.");
+            button.disabled = false;
+            return;
+        }
+
+        const routeRow = addCheck(container, "Route the data actually took");
+        routeRow.set("skip", "Waiting for a phone to connect.");
+
+        try {
+            PAIRING.peer = new window.Peer(undefined, {debug: 0});
+        } catch (error) {
+            setupRow.set("fail", `Could not create a session (${error?.message ?? error}).`);
+            button.disabled = false;
+            return;
+        }
+
+        PAIRING.peer.on("open", id => {
+            setupRow.set("pass", "Session created. Open the link below on a phone, on whichever network you want to test.");
+            showPairingLink(id);
+        });
+
+        PAIRING.peer.on("error", error => {
+            setupRow.set("fail", `Session error: ${error?.type ?? ""} ${error?.message ?? ""}`.trim());
+            REPORT.checks = REPORT.checks.filter(check => check.id !== "pairing");
+            REPORT.checks.push({
+                id: "pairing",
+                title: "Live pairing test",
+                status: "fail",
+                detail: `Session error: ${error?.type ?? "unknown"}`,
+                data: null,
+                milliseconds: 0,
+            });
+            refreshSummary();
+            button.disabled = false;
+        });
+
+        PAIRING.peer.on("connection", connection => {
+            PAIRING.connection = connection;
+            PAIRING.samples = 0;
+            PAIRING.openedAt = performance.now();
+            connection.on("open", () => {
+                routeRow.set("busy", "Phone connected. Measuring for a few seconds…");
+                attempt(() => connection.send({type: "ping", sentAt: Date.now()}));
+                setTimeout(async () => {
+                    const route = await describeSelectedRoute(connection.peerConnection);
+                    const elapsed = (performance.now() - PAIRING.openedAt) / 1000;
+                    const description = route
+                        ? `${route.localType ?? "?"} ↔ ${route.remoteType ?? "?"} over ${route.protocol ?? "?"}` +
+                          (route.relayProtocol ? ` (relayed via ${route.relayProtocol})` : "") +
+                          (route.roundTripMs != null ? `, round trip ${route.roundTripMs} ms` : "")
+                        : "route details unavailable";
+                    const meaning = route?.localType === "relay"
+                        ? "Traffic went through a TURN relay."
+                        : route?.localType === "srflx" || route?.remoteType === "srflx"
+                            ? "Direct connection across NAT — no relay was needed."
+                            : route?.localType === "host"
+                                ? "Both devices were on the same network segment."
+                                : "";
+                    routeRow.set("pass", `${description}\nReceived ${PAIRING.samples} samples in ${elapsed.toFixed(1)} s. ${meaning}`);
+                    REPORT.checks = REPORT.checks.filter(check => check.id !== "pairing");
+                    REPORT.checks.push({
+                        id: "pairing",
+                        title: "Live pairing test",
+                        status: "pass",
+                        detail: `${description}. ${PAIRING.samples} samples in ${elapsed.toFixed(1)} s. ${meaning}`,
+                        data: {route, samples: PAIRING.samples, seconds: Number(elapsed.toFixed(1))},
+                        milliseconds: Math.round(performance.now() - PAIRING.openedAt),
+                    });
+                    refreshSummary();
+                }, 6000);
+            });
+            connection.on("data", data => {
+                if (data?.type === "sample") PAIRING.samples += 1;
+                if (data?.type === "ping") attempt(() => connection.send({type: "pong", sentAt: data.sentAt}));
+            });
+            connection.on("error", error => routeRow.set("fail", `Connection error: ${error?.message ?? error}`));
+            connection.on("close", () => routeRow.set("warn", "Phone disconnected."));
+        });
+
+        button.disabled = false;
+    }
+
+    function showPairingLink(peerId) {
+        const url = new URL(location.href);
+        url.search = "";
+        url.hash = "";
+        url.searchParams.set("peer", peerId);
+        const link = url.toString();
+
+        const linkBox = document.getElementById("pairingLink");
+        linkBox.classList.remove("hidden");
+        linkBox.textContent = link;
+
+        const holder = document.getElementById("qrCode");
+        holder.innerHTML = "";
+        loadScript("https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js")
+            .then(() => {
+                if (typeof window.QRCode === "function") {
+                    new window.QRCode(holder, {text: link, width: 168, height: 168, correctLevel: window.QRCode.CorrectLevel.M});
+                }
+            })
+            .catch(() => {
+                holder.textContent = "QR library unavailable — type the link above into the phone instead.";
+            });
+    }
+
+    async function runPhoneSide() {
+        const container = document.getElementById("phoneResults");
+        const button = document.getElementById("phoneConnect");
+        button.disabled = true;
+        container.innerHTML = "";
+        const row = addCheck(container, "Connecting to the computer");
+
+        try {
+            await ensurePeerLibrary();
+        } catch (error) {
+            row.set("fail", `PeerJS library could not load on this phone (${error?.message ?? error}).`);
+            button.disabled = false;
+            return;
+        }
+
+        const target = new URLSearchParams(location.search).get("peer");
+        if (!target) {
+            row.set("fail", "This link has no session id in it. Generate a fresh link on the computer.");
+            button.disabled = false;
+            return;
+        }
+
+        let peer = null;
+        try {
+            peer = new window.Peer(undefined, {debug: 0});
+        } catch (error) {
+            row.set("fail", `Could not start a session (${error?.message ?? error}).`);
+            button.disabled = false;
+            return;
+        }
+
+        const failTimer = setTimeout(() => {
+            row.set("fail", "Gave up after 25 seconds. This is the failure you have been seeing — the report on the computer will show why.");
+            button.disabled = false;
+        }, 25000);
+
+        peer.on("open", () => {
+            const connection = peer.connect(target, {reliable: true, serialization: "json"});
+            connection.on("open", () => {
+                clearTimeout(failTimer);
+                row.set("pass", "Connected. Sending test samples for a few seconds…");
+                let sent = 0;
+                const timer = setInterval(() => {
+                    const ok = attempt(() => {
+                        connection.send({type: "sample", index: sent, t: Date.now()});
+                        return true;
+                    }, false);
+                    sent += ok ? 1 : 0;
+                    if (sent >= 100) {
+                        clearInterval(timer);
+                        row.set("pass", `Connected and sent ${sent} samples. Pairing works on this network — check the computer for the route details.`);
+                        button.disabled = false;
+                    }
+                }, 40);
+            });
+            connection.on("error", error => {
+                clearTimeout(failTimer);
+                row.set("fail", `Connection error: ${error?.type ?? ""} ${error?.message ?? ""}`.trim());
+                button.disabled = false;
+            });
+        });
+
+        peer.on("error", error => {
+            clearTimeout(failTimer);
+            row.set("fail", `Session error: ${error?.type ?? "unknown"}. ${error?.message ?? ""}`.trim());
+            button.disabled = false;
+        });
+    }
+
+    // ------------------------------------------------------------ turn test
+
+    async function runTurnTest() {
+        const button = document.getElementById("runTurn");
+        const container = document.getElementById("turnResults");
+        button.disabled = true;
+        container.innerHTML = "";
+        const row = addCheck(container, "Relay candidates from your TURN server");
+
+        const url = attempt(() => document.getElementById("turnUrl").value.trim(), "");
+        const username = attempt(() => document.getElementById("turnUser").value.trim(), "");
+        const credential = attempt(() => document.getElementById("turnPass").value.trim(), "");
+
+        const gathered = await settle(
+            gatherIce([{urls: url, username, credential}], 10000),
+            15000,
+            () => ({counts: {relay: 0, srflx: 0, host: 0}, candidates: [], errors: ["timed out"]}),
+        );
+        const relay = gathered?.counts?.relay ?? 0;
+        const detail = `host ${gathered?.counts?.host ?? 0}, server-reflexive ${gathered?.counts?.srflx ?? 0}, relay ${relay}\n` +
+            (relay > 0
+                ? "This TURN server works on this network. Wiring it into connection.js would fix pairing."
+                : "No relay candidates. Either the credentials are wrong, or this port is blocked too.") +
+            (gathered?.errors?.length ? `\nErrors: ${gathered.errors.join(" | ")}` : "");
+
+        row.set(relay > 0 ? "pass" : "fail", detail);
+        REPORT.checks = REPORT.checks.filter(check => check.id !== "turn-manual");
+        REPORT.checks.push({
+            id: "turn-manual",
+            title: "Manual TURN test",
+            status: relay > 0 ? "pass" : "fail",
+            // Deliberately records the URL only — credentials stay out of the saved report.
+            detail: `${url} → relay candidates: ${relay}`,
+            data: {url, relayCandidates: relay, counts: gathered?.counts ?? null, errors: gathered?.errors ?? []},
+            milliseconds: 0,
+        });
+        refreshSummary();
+        button.disabled = false;
+    }
+
+    // ---------------------------------------------------------- sensor test
+
+    async function runSensorTest() {
+        const button = document.getElementById("runSensors");
+        const container = document.getElementById("sensorResults");
+        button.disabled = true;
+        container.innerHTML = "";
+        const row = addCheck(container, "Motion sensor readings");
+
+        if (typeof DeviceMotionEvent === "undefined") {
+            row.set("fail", "This device has no motion sensor API. Expected on a desktop — run this part on a phone.");
+            REPORT.checks.push({id: "sensors", title: "Motion sensors", status: "fail", detail: "DeviceMotionEvent unavailable", data: null, milliseconds: 0});
+            button.disabled = false;
+            refreshSummary();
+            return;
+        }
+
+        if (typeof DeviceMotionEvent.requestPermission === "function") {
+            try {
+                const outcome = await DeviceMotionEvent.requestPermission();
+                if (outcome !== "granted") {
+                    row.set("fail", `Permission ${outcome}. On iOS the activity cannot read sensors without this.`);
+                    button.disabled = false;
+                    return;
+                }
+            } catch (error) {
+                row.set("warn", `Permission request failed (${error?.message ?? error}). This usually means the page is not on HTTPS.`);
+                button.disabled = false;
+                return;
+            }
+        }
+
+        let events = 0;
+        let hasAcceleration = false;
+        let hasRotation = false;
+        const listener = event => {
+            events += 1;
+            if (event?.accelerationIncludingGravity?.x != null) hasAcceleration = true;
+            if (event?.rotationRate?.alpha != null) hasRotation = true;
+        };
+        window.addEventListener("devicemotion", listener);
+        row.set("busy", "Move the device for three seconds…");
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        window.removeEventListener("devicemotion", listener);
+
+        const rate = Math.round(events / 3);
+        const status = events > 0 && hasAcceleration ? "pass" : "fail";
+        const detail = events === 0
+            ? "No motion events arrived. Sensors are blocked or unavailable on this device."
+            : `${events} events in 3 s (~${rate} per second). Acceleration: ${hasAcceleration ? "yes" : "no"}. Rotation: ${hasRotation ? "yes" : "no"}.`;
+        row.set(status, detail);
+        REPORT.checks = REPORT.checks.filter(check => check.id !== "sensors");
+        REPORT.checks.push({
+            id: "sensors",
+            title: "Motion sensors",
+            status,
+            detail,
+            data: {events, ratePerSecond: rate, hasAcceleration, hasRotation},
+            milliseconds: 3000,
+        });
+        refreshSummary();
+        button.disabled = false;
+    }
+
+    // ---------------------------------------------------------------- wiring
+
+    attempt(() => {
+        document.getElementById("run").addEventListener("click", () => {
+            runAll().catch(error => REPORT.errors.push({kind: "run", message: String(error?.message ?? error)}));
+        });
+        document.getElementById("startPairing").addEventListener("click", () => {
+            startPairingTest().catch(error => REPORT.errors.push({kind: "pairing", message: String(error?.message ?? error)}));
+        });
+        document.getElementById("runTurn").addEventListener("click", () => {
+            runTurnTest().catch(error => REPORT.errors.push({kind: "turn", message: String(error?.message ?? error)}));
+        });
+        document.getElementById("runSensors").addEventListener("click", () => {
+            runSensorTest().catch(error => REPORT.errors.push({kind: "sensors", message: String(error?.message ?? error)}));
+        });
+        document.getElementById("phoneConnect").addEventListener("click", () => {
+            runPhoneSide().catch(error => REPORT.errors.push({kind: "phone", message: String(error?.message ?? error)}));
+        });
+        document.getElementById("notes").addEventListener("input", refreshSummary);
+
+        document.getElementById("downloadJson").addEventListener("click", () => {
+            refreshSummary();
+            saveFile(`motionlab-diagnostics-${timestamp()}.json`, JSON.stringify(REPORT, null, 2), "application/json");
+        });
+        document.getElementById("downloadText").addEventListener("click", () => {
+            refreshSummary();
+            saveFile(`motionlab-diagnostics-${timestamp()}.txt`, buildSummaryText(), "text/plain");
+        });
+        document.getElementById("copyReport").addEventListener("click", async () => {
+            refreshSummary();
+            const note = document.getElementById("downloadNote");
+            try {
+                await navigator.clipboard.writeText(buildSummaryText());
+                note.textContent = "Summary copied to the clipboard.";
+            } catch (error) {
+                note.textContent = `Clipboard unavailable (${error?.message ?? error}). Select the text below and copy it manually.`;
+            }
+        });
+
+        // A pairing link opened on a phone shows the phone panel instead of the full suite.
+        if (new URLSearchParams(location.search).get("peer")) {
+            document.getElementById("phonePanel").classList.remove("hidden");
+            document.getElementById("mainPanel").classList.add("hidden");
+        }
+
+        REPORT.context = collectContext();
+        REPORT.capabilities = collectCapabilities();
+        refreshSummary();
+    });
+</script>
+</body>
+</html>
