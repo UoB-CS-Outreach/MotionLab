@@ -81,7 +81,12 @@ class AblyTransport {
         if (!this.channel || this.client?.connection?.state !== "connected") return false;
         const outgoing = this.role === "desktop" ? "desktop" : "phone";
         this.channel.publish(outgoing, message).catch(error => {
-            if (!this.closed) this.onState("connecting", error?.message ?? "Publish failed");
+            if (this.closed) return;
+            // A dropped connection is reported by handleConnection. A failed publish on a
+            // live connection (e.g. a rate limit) must not park the relay in "connecting",
+            // because nothing would move it back to "ready"; the heartbeats judge its health.
+            const live = this.client?.connection?.state === "connected";
+            this.onState(live ? "ready" : "connecting", `Publish failed: ${error?.message ?? "unknown error"}`);
         });
         return true;
     }

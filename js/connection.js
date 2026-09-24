@@ -80,6 +80,7 @@ export class PairingBridge {
 
         // Computer state
         this.currentPhone = "";
+        this.retiredPhones = new Set();
         this.lastSequence = 0;
         this.lastHeardFromPhone = 0;
         this.lastRoute = "";
@@ -258,7 +259,15 @@ export class PairingBridge {
 
         if (message.k === "hello") {
             if (phone !== this.currentPhone) {
+                // A replaced phone never takes the session back. Without this, a late
+                // hello (from a relay that has just reconnected, or one that waited in a
+                // Firebase mailbox) would undo a takeover and push the newer phone off.
+                if (this.retiredPhones.has(phone)) {
+                    this.sendOn(route, {k: "welcome", v: PROTOCOL_VERSION, p: phone, cur: this.currentPhone});
+                    return;
+                }
                 // The most recent phone to scan takes over, as before.
+                if (this.currentPhone) this.retiredPhones.add(this.currentPhone);
                 this.currentPhone = phone;
                 this.lastSequence = 0;
             }
@@ -463,6 +472,7 @@ export class PairingBridge {
         this.recent = [];
         this.lastActiveRoute = "";
         this.currentPhone = "";
+        this.retiredPhones.clear();
         this.lastSequence = 0;
         this.lastHeardFromPhone = 0;
         this.lastRoute = "";

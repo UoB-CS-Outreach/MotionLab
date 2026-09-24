@@ -60,11 +60,13 @@ class FirebaseTransport {
         const inbox = sdk.child(base, this.role === "desktop" ? "toDesktop" : "toPhone");
         this.outbox = sdk.child(base, this.role === "desktop" ? "toPhone" : "toDesktop");
 
+        let everConnected = false;
         const firstConnection = new Promise((resolve, reject) => {
             this.unsubscribers.push(sdk.onValue(sdk.ref(this.database, ".info/connected"), snapshot => {
                 this.connected = snapshot.val() === true;
                 if (this.closed) return;
                 if (this.connected) {
+                    everConnected = true;
                     // Server-side clean-up if this tab closes or drops off: the computer
                     // removes the whole session, a phone removes what it sent. An
                     // onDisconnect handler fires only once, so re-arm it on every connection.
@@ -72,7 +74,8 @@ class FirebaseTransport {
                     this.onState("ready", "");
                     resolve();
                 } else {
-                    this.onState("connecting", "Reconnecting to Firebase");
+                    // The SDK always reports "not connected" once before its first connection.
+                    this.onState("connecting", everConnected ? "Reconnecting to Firebase" : "Connecting to Firebase");
                 }
             }, reject));
         });
@@ -88,8 +91,11 @@ class FirebaseTransport {
             if (!this.closed) this.onState("failed", describeError(error));
         }));
 
-
-        await withTimeout(firstConnection, OPEN_TIMEOUT_MS, "Firebase did not respond in time");
+        await withTimeout(
+            firstConnection,
+            OPEN_TIMEOUT_MS,
+            "Firebase did not respond in time (check databaseURL in js/relay-config.js, or firebasedatabase.app may be blocked here)",
+        );
     }
 
     send(message) {

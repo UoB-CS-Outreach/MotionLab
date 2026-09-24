@@ -42,6 +42,11 @@ function setStatus(element, state, message) {
 // One line per relay service, e.g. "Ably ● connected · Firebase ○ retrying", for staff troubleshooting.
 function renderRelayStatus(element, routes) {
     if (!element) return;
+    // Called every second; rebuilding an unchanged aria-live line would make screen
+    // readers announce it again each time.
+    const key = JSON.stringify((routes ?? []).map(route => [route.label, route.active, route.state, route.detail]));
+    if (element.dataset.routes === key) return;
+    element.dataset.routes = key;
     element.replaceChildren();
     if (!routes?.length) return;
     element.append("Relays: ");

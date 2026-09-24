@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import {afterEach, test} from "node:test";
 
-import {decodeSample, encodeSample, PairingBridge} from "../../js/connection.js";
+import {decodeSample, encodeSample, PairingBridge, PROTOCOL_VERSION} from "../../js/connection.js";
 import {selectTransports} from "../../js/transports/index.js";
 
 const FAST = {batchMs: 20, heartbeatMs: 60, healthTimeoutMs: 200, retryMs: 100, maxPending: 50, resendRows: 50, maxRowsPerMessage: 4};
@@ -233,6 +233,22 @@ test("a second phone scanning the code takes over from the first", async () => {
     assert.ok(phone.destroyed, "the first phone stops once replaced");
     second.destroy();
     desktop.destroy();
+});
+
+test("a phone that has been replaced cannot take the session back", async () => {
+    const relay = new MemoryRelay("a");
+    const {desktop, phone, session} = pair([relay]);
+    await until(() => phone.connected && desktop.connected);
+    const second = track(new PairingBridge({role: "phone", session, transports: [relay.factory()], timing: FAST}));
+    second.start();
+    await until(() => desktop.currentPhone === second.phoneId);
+
+    // A late hello from the first phone: one sent on a relay that has just
+    // reconnected, or one that waited in a Firebase mailbox.
+    desktop.receive(desktop.routes[0], {k: "hello", v: PROTOCOL_VERSION, p: phone.phoneId, r: "phone"});
+    await wait(FAST.heartbeatMs * 4);
+    assert.equal(desktop.currentPhone, second.phoneId, "the computer stays with the newer phone");
+    assert.ok(!second.destroyed, "the newer phone keeps its connection");
 });
 
 test("a phone link without a session code reports an error", () => {
