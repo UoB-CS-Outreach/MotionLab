@@ -5,6 +5,8 @@
   "type": "module",
   "description": "Browser-based phone motion and activity-recognition open-day prototype",
   "scripts": {
-    "test": "python -m unittest discover -s tests -p test_*.py"
+    "test": "npm run test:python && npm run test:js",
+    "test:python": "python -m unittest discover -s tests -p test_*.py",
+    "test:js": "node --test \"tests/js/*.test.mjs\""
   }
 }

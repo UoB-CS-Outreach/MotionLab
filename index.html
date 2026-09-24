@@ -45,6 +45,7 @@
                         <p>No app or account is needed.</p>
                         <p class="muted">The phone will open a sensor page and ask permission before sharing readings.</p>
                         <button class="text-button" id="newSessionBtn" type="button">Create a new pairing session</button>
+                        <p class="relay-status" id="relayStatus" aria-live="polite"></p>
                     </div>
                 </div>
 
@@ -407,7 +408,7 @@
 
         <aside class="data-notice">
             <strong>Your data is not saved.</strong>
-            <p>Sensor readings, recordings and the trained model are held only in this computer tab's temporary memory. They are deleted when this tab is closed or refreshed.</p>
+            <p>Sensor readings, recordings and the trained model are held only in this computer tab's temporary memory. They are deleted when this tab is closed or refreshed. Readings pass from the phone through an encrypted relay service, which does not keep them.</p>
         </aside>
     </section>
 
@@ -421,6 +422,7 @@
             <div class="status-chip waiting" id="phoneConnectionStatus" role="status"><span></span> Connecting to computer</div>
             <button class="button primary phone-start" id="enableSensorsBtn" type="button" disabled>Enable motion sensors</button>
             <p class="permission-note" id="permissionNote">Your browser may ask for permission to access its motion sensors.</p>
+            <p class="relay-status" id="phoneRelayStatus" aria-live="polite"></p>
 
             <div class="phone-readings-heading">
                 <strong>Live readings</strong>
@@ -443,15 +445,15 @@
 
         <aside class="data-notice phone-data-notice">
             <strong>Your data is not saved on this phone.</strong>
-            <p>Live readings are held only while this tab is open. Readings already sent remain temporarily in the computer tab until that tab is closed or refreshed.</p>
+            <p>Live readings are held only while this tab is open. They travel to the computer through an encrypted relay service, which does not keep them, and remain temporarily in the computer tab until that tab is closed or refreshed.</p>
         </aside>
     </section>
 </main>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<!-- PeerJS and QR dependencies; the desktop loads its pinned Python runtime only when needed. -->
-<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js"></script>
+<!-- QR dependency. Relay libraries (Ably, Firebase) load on demand from js/transports/;
+     the desktop loads its pinned Python runtime only when needed. -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script type="module" src="js/app.js"></script>
 </body>

@@ -276,6 +276,42 @@ h2 {
     margin-bottom: 7px;
 }
 
+.relay-status {
+    min-height: 1.2em;
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 0.78rem;
+}
+
+.relay-item {
+    white-space: nowrap;
+}
+
+.relay-item::before {
+    content: "";
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    margin-right: 4px;
+    border-radius: 50%;
+    background: #94a3b8;
+    vertical-align: 1px;
+}
+
+.relay-item.active::before,
+.relay-item.ready::before {
+    background: #16a34a;
+}
+
+.relay-item.active {
+    color: var(--ink);
+    font-weight: 600;
+}
+
+.relay-item.failed::before {
+    background: #dc2626;
+}
+
 .muted {
     color: var(--muted);
     font-size: 0.88rem;

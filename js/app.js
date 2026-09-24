@@ -1,5 +1,5 @@
 import {SignalChart} from "./chart.js";
-import {PeerBridge} from "./connection.js";
+import {PairingBridge} from "./connection.js";
 import {PhoneMotionSensor} from "./sensors.js";
 import {MotionSimulator} from "./simulator.js";
 import {PythonMotionModel} from "./python-model.js";
@@ -7,6 +7,8 @@ import {PythonMotionModel} from "./python-model.js";
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const mode = params.get("mode") === "phone" ? "phone" : "desktop";
+// Optional ?relay=ably or ?relay=firebase restricts pairing to one service (for testing).
+const relayOverride = params.get("relay") ?? "";
 const wait = milliseconds => new Promise(resolve => window.setTimeout(resolve, milliseconds));
 const MIN_RECORDING_SAMPLES = 30;
 const MIN_RECORDING_DURATION_MS = 2500;
@@ -35,6 +37,25 @@ function showToast(message) {
 function setStatus(element, state, message) {
     element.className = `status-chip ${state}`;
     element.innerHTML = `<span></span>${message}`;
+}
+
+// One line per relay service, e.g. "Ably ● connected · Firebase ○ retrying", for staff troubleshooting.
+function renderRelayStatus(element, routes) {
+    if (!element) return;
+    element.replaceChildren();
+    if (!routes?.length) return;
+    element.append("Relays: ");
+    routes.forEach((route, index) => {
+        if (index) element.append(" · ");
+        const item = document.createElement("span");
+        item.className = `relay-item ${route.active ? "active" : route.state}`;
+        const word = route.active
+            ? "in use"
+            : route.state === "ready" ? "ready" : route.state === "failed" ? "unavailable" : "connecting";
+        item.textContent = `${route.label} ${word}`;
+        if (route.detail) item.title = route.detail;
+        element.append(item);
+    });
 }
 
 function safeNumber(value) {
@@ -148,6 +169,8 @@ function initDesktop() {
     state.simulator = new MotionSimulator(sample => receiveSample(sample, "simulator"));
 
     function updateDesktopStatus(status, message) {
+        // While the simulator runs its chip stays visible; only a real phone connecting replaces it.
+        if (state.simulator.running && status !== "connected") return;
         setStatus($("desktopConnectionStatus"), status, message);
         if (status === "connected") {
             state.source = "phone";
@@ -159,30 +182,31 @@ function initDesktop() {
         state.bridge?.destroy();
         $("qrCode").innerHTML = '<div class="qr-placeholder">Creating<br>QR code...</div>';
 
-        state.bridge = new PeerBridge({
+        state.bridge = new PairingBridge({
             role: "desktop",
+            relayOverride,
             onStatus: updateDesktopStatus,
-            onReady: peerId => displayPairingLink(peerId),
+            onReady: session => displayPairingLink(session),
+            onRoutes: routes => renderRelayStatus($("relayStatus"), routes),
             onData: data => {
                 if (data?.type === "sensor") receiveSample(data, "phone");
             },
         });
 
-        try {
-            state.bridge.start();
-        } catch (error) {
-            updateDesktopStatus("error", "Online pairing unavailable");
-            $("qrCode").innerHTML = '<div class="qr-placeholder">Pairing needs<br>internet access</div>';
-            showToast(error.message);
+        state.bridge.start();
+        if (!state.bridge.configured) {
+            $("qrCode").innerHTML = '<div class="qr-placeholder">Phone pairing<br>is not set up.<br>Use the simulator.</div>';
+            $("relayStatus").textContent = "No relay service is configured in js/relay-config.js.";
         }
     }
 
-    function displayPairingLink(peerId) {
+    function displayPairingLink(session) {
         const url = new URL(location.href);
         url.search = "";
         url.hash = "";
         url.searchParams.set("mode", "phone");
-        url.searchParams.set("peer", peerId);
+        url.searchParams.set("s", session);
+        if (relayOverride) url.searchParams.set("relay", relayOverride);
         const link = url.toString();
         $("qrCode").innerHTML = "";
 
@@ -711,7 +735,7 @@ function initDesktop() {
         setCustomMovementAvailable(true);
         $("toggleDemoBtn").textContent = "Start simulator";
         if (updateStatus) {
-            if (state.bridge?.connected) setStatus($("desktopConnectionStatus"), "connected", "Phone connected");
+            if (state.bridge) state.bridge.announce();
             else setStatus($("desktopConnectionStatus"), "waiting", "Waiting for phone");
         }
     }
@@ -816,7 +840,7 @@ function initDesktop() {
 function initPhone() {
     $("phoneView").hidden = false;
     $("modePill").textContent = "Phone sensor";
-    const targetId = params.get("peer") ?? "";
+    const session = params.get("s") ?? "";
     const rateTimes = [];
     let bridge;
     let sensor;
@@ -844,10 +868,12 @@ function initPhone() {
     }
 
     sensor = new PhoneMotionSensor(handlePhoneSample);
-    bridge = new PeerBridge({
+    bridge = new PairingBridge({
         role: "phone",
-        targetId,
+        session,
+        relayOverride,
         onStatus: updatePhoneStatus,
+        onRoutes: routes => renderRelayStatus($("phoneRelayStatus"), routes),
     });
 
     $("enableSensorsBtn").addEventListener("click", async () => {
@@ -865,16 +891,12 @@ function initPhone() {
         }
     });
 
-    if (!targetId) {
+    if (!session) {
         updatePhoneStatus("error", "Pairing link is incomplete");
         $("permissionNote").textContent = "Scan a fresh QR code from the Motion Lab computer.";
     } else {
-        try {
-            bridge.start();
-        } catch (error) {
-            updatePhoneStatus("error", "Online pairing unavailable");
-            $("permissionNote").textContent = error.message;
-        }
+        bridge.start();
+        if (!bridge.configured) $("permissionNote").textContent = "Phone pairing is not set up on this copy of Motion Lab.";
     }
 
     window.addEventListener("beforeunload", () => {

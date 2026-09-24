@@ -105,8 +105,8 @@
         <h2>What this page does and does not do</h2>
         <p style="font-size: 14px; margin-bottom: 4px;"><strong>It does:</strong></p>
         <ul>
-            <li>Make ordinary web requests to the services this activity already uses (GitHub Pages, jsDelivr, the PeerJS broker) and to a few free alternatives we might switch to.</li>
-            <li>Ask the browser which connection routes it can find, the same way any video-call site does.</li>
+            <li>Make ordinary web requests to the services this activity uses (GitHub Pages, jsDelivr, gstatic, and the Ably and Firebase relay services) and to a few alternatives we might switch to.</li>
+            <li>Pass short test messages (no personal data) through each relay service, from this page back to itself.</li>
             <li>Record browser and connection capabilities, kept in this tab until you press Download.</li>
         </ul>
         <p style="font-size: 14px; margin: 10px 0 4px;"><strong>It does not:</strong></p>
@@ -114,7 +114,6 @@
             <li>Scan the network, probe other machines, or touch anything on this computer.</li>
             <li>Read files, cookies, browsing history, or any personal data.</li>
             <li>Send results anywhere — the report is only saved if you choose to download it.</li>
-            <li>Include IP addresses in the report unless you tick the box below.</li>
         </ul>
     </section>
 
@@ -130,7 +129,6 @@
         <p class="detail" style="margin-top: 0;">Takes about a minute. Every check has a time limit, so a blocked service cannot hang the run.</p>
         <label for="notes">Notes for later (room, machine, wired or wifi)</label>
         <input id="notes" placeholder="e.g. Lab 1.15, wired desktop, Chrome, campus network" spellcheck="false">
-        <label class="inline"><input type="checkbox" id="includeIps"> Include IP addresses in the report (useful if you show it to IT)</label>
         <p></p>
         <button id="run">Run all checks</button>
         <div id="results" style="margin-top: 12px;"></div>
@@ -144,8 +142,9 @@
     <section>
         <h2>3. Live pairing test (optional)</h2>
         <p class="detail" style="margin-top: 0;">
-            The definitive test: pair a real phone with this machine and see which route the data actually takes.
-            Start it here, then scan or open the link on a phone.
+            The definitive test: pair a real phone with this machine through the same relay services the activity
+            uses, and see which relay carries the data. Start it here, then scan or open the link on a phone.
+            Add <code>?relay=ably</code> or <code>?relay=firebase</code> to this page's address to test one service on its own.
         </p>
         <button id="startPairing">Start pairing test</button>
         <div id="pairingResults" style="margin-top: 12px;"></div>
@@ -154,31 +153,14 @@
     </section>
 
     <section>
-        <h2>4. Test a TURN server (optional)</h2>
-        <p class="detail" style="margin-top: 0;">
-            If you get hold of TURN credentials, check here whether they yield <code>relay</code> candidates on this
-            network. Credentials are never written into the downloaded report.
-        </p>
-        <label for="turnUrl">TURN URL</label>
-        <input id="turnUrl" value="turns:example.com:443?transport=tcp" spellcheck="false">
-        <label for="turnUser">Username</label>
-        <input id="turnUser" spellcheck="false" autocomplete="off">
-        <label for="turnPass">Credential</label>
-        <input id="turnPass" spellcheck="false" autocomplete="off">
-        <p></p>
-        <button id="runTurn">Test this TURN server</button>
-        <div id="turnResults" style="margin-top: 12px;"></div>
-    </section>
-
-    <section>
-        <h2>5. Motion sensors (run this part on a phone)</h2>
+        <h2>4. Motion sensors (run this part on a phone)</h2>
         <p class="detail" style="margin-top: 0;">Checks that the phone will actually give up its accelerometer readings. Asks permission on iOS.</p>
         <button id="runSensors">Test motion sensors</button>
         <div id="sensorResults" style="margin-top: 12px;"></div>
     </section>
 
     <section>
-        <h2>6. Report</h2>
+        <h2>5. Report</h2>
         <p class="detail" style="margin-top: 0;">Everything gathered so far, including any checks that failed to run.</p>
         <button id="downloadJson">Download report (.json)</button>
         <button id="downloadText" class="secondary">Download summary (.txt)</button>
@@ -195,7 +177,7 @@
 
     const REPORT = {
         tool: "motionlab-network-check",
-        version: 2,
+        version: 3,
         generatedAt: new Date().toISOString(),
         notes: "",
         context: {},
@@ -220,20 +202,6 @@
             REPORT.errors.push({kind: "collect", message: String(error?.message ?? error)});
             return fallback;
         }
-    }
-
-    function includeIps() {
-        return attempt(() => document.getElementById("includeIps").checked, false);
-    }
-
-    function maskAddress(value) {
-        if (!value) return null;
-        if (includeIps()) return value;
-        const text = String(value);
-        if (text.endsWith(".local")) return "mdns-hostname.local";
-        if (text.includes(":")) return text.replace(/^\[/, "").split(":")[0] + ":hidden";
-        const parts = text.split(".");
-        return parts.length === 4 ? `${parts[0]}.${parts[1]}.hidden.hidden` : "hidden";
     }
 
     // ------------------------------------------------------------------- ui
@@ -354,90 +322,6 @@
         });
     }
 
-    function describeCandidate(candidate) {
-        const text = candidate?.candidate ?? "";
-        const parts = text.split(" ");
-        const typeMatch = /\btyp (\w+)/.exec(text);
-        return {
-            type: candidate?.type ?? (typeMatch ? typeMatch[1] : "unknown"),
-            protocol: candidate?.protocol ?? (parts[2] ? parts[2].toLowerCase() : null),
-            address: maskAddress(candidate?.address ?? parts[4] ?? null),
-            port: candidate?.port ?? (Number(parts[5]) || null),
-            relatedPort: candidate?.relatedPort ?? null,
-            relayProtocol: candidate?.relayProtocol ?? null,
-        };
-    }
-
-    async function gatherIce(iceServers, milliseconds = 9000) {
-        const counts = {host: 0, srflx: 0, relay: 0, prflx: 0, unknown: 0};
-        const candidates = [];
-        const errors = [];
-        if (typeof RTCPeerConnection !== "function") {
-            return {supported: false, counts, candidates, errors, note: "WebRTC unavailable in this browser"};
-        }
-        let connection = null;
-        try {
-            connection = new RTCPeerConnection({iceServers, iceTransportPolicy: "all"});
-        } catch (error) {
-            return {supported: true, counts, candidates, errors, note: `Could not create connection: ${error?.message ?? error}`};
-        }
-        try {
-            connection.addEventListener("icecandidateerror", event => {
-                const entry = `${event?.url ?? "?"} → ${event?.errorCode ?? "?"} ${event?.errorText ?? ""}`.trim();
-                if (!errors.includes(entry)) errors.push(entry);
-            });
-            connection.createDataChannel("probe");
-            await connection.setLocalDescription(await connection.createOffer());
-            await new Promise(resolve => {
-                const timer = setTimeout(resolve, milliseconds);
-                connection.addEventListener("icecandidate", event => {
-                    if (!event.candidate) {
-                        clearTimeout(timer);
-                        resolve();
-                        return;
-                    }
-                    const parsed = describeCandidate(event.candidate);
-                    counts[parsed.type] = (counts[parsed.type] ?? 0) + 1;
-                    candidates.push(parsed);
-                });
-            });
-        } catch (error) {
-            errors.push(`gathering failed: ${error?.message ?? error}`);
-        } finally {
-            attempt(() => connection.close());
-        }
-        return {supported: true, counts, candidates, errors};
-    }
-
-    async function describeSelectedRoute(peerConnection) {
-        if (!peerConnection || typeof peerConnection.getStats !== "function") return null;
-        try {
-            const stats = await peerConnection.getStats();
-            const entries = new Map();
-            stats.forEach(entry => entries.set(entry.id, entry));
-            let best = null;
-            stats.forEach(entry => {
-                if (entry.type !== "candidate-pair") return;
-                const chosen = entry.selected || entry.nominated || entry.state === "succeeded";
-                if (!chosen) return;
-                if (!best || (entry.bytesReceived ?? 0) >= (best.bytesReceived ?? 0)) best = entry;
-            });
-            if (!best) return null;
-            const local = entries.get(best.localCandidateId) ?? {};
-            const remote = entries.get(best.remoteCandidateId) ?? {};
-            return {
-                localType: local.candidateType ?? null,
-                remoteType: remote.candidateType ?? null,
-                protocol: local.protocol ?? null,
-                relayProtocol: local.relayProtocol ?? null,
-                roundTripMs: best.currentRoundTripTime != null ? Math.round(best.currentRoundTripTime * 1000) : null,
-                bytesReceived: best.bytesReceived ?? null,
-            };
-        } catch (error) {
-            return {error: String(error?.message ?? error)};
-        }
-    }
-
     function loadScript(source, milliseconds = 12000) {
         return new Promise((resolve, reject) => {
             const element = document.createElement("script");
@@ -511,41 +395,38 @@
     const ASSETS = [
         {id: "asset-pages", title: "Activity page loads (GitHub Pages)", url: "https://uob-cs-outreach.github.io/MotionLab/", critical: true},
         {id: "asset-pyodide", title: "Pyodide loader reachable (jsDelivr)", url: "https://cdn.jsdelivr.net/pyodide/v0.29.2/full/pyodide.js", critical: true},
-        {id: "asset-peerjs", title: "PeerJS library reachable (jsDelivr)", url: "https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js", critical: true},
-        {id: "asset-qrcode", title: "QR code library reachable (cdnjs)", url: "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js", critical: false},
+        {id: "asset-ably", title: "Ably relay library reachable (jsDelivr)", url: "https://cdn.jsdelivr.net/npm/ably@2.29.0/build/ably.min.js", critical: false, impact: "The Ably relay cannot be used; pairing relies on Firebase."},
+        {id: "asset-firebase", title: "Firebase relay library reachable (gstatic)", url: "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js", critical: false, impact: "The Firebase relay cannot be used; pairing relies on Ably."},
+        {id: "asset-qrcode", title: "QR code library reachable (cdnjs)", url: "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js", critical: false, impact: "Only affects the QR code."},
     ];
 
-    const STUN_SERVERS = [
-        {label: "Google (UDP 19302)", url: "stun:stun.l.google.com:19302"},
-        {label: "Google alternate (UDP 19302)", url: "stun:stun1.l.google.com:19302"},
-        {label: "Cloudflare (UDP 3478)", url: "stun:stun.cloudflare.com:3478"},
-        {label: "Metered (UDP 80)", url: "stun:stun.relay.metered.ca:80"},
-        {label: "Nextcloud (UDP 443)", url: "stun:stun.nextcloud.com:443"},
-    ];
-
-    const PEERJS_DEFAULT_ICE = [
-        {urls: "stun:stun.l.google.com:19302"},
-        {
-            urls: ["turn:eu-0.turn.peerjs.com:3478", "turn:us-0.turn.peerjs.com:3478"],
-            username: "peerjs",
-            credential: "peerjsp",
-        },
-    ];
-
+    // Raw WebSocket reachability of the relay endpoints. Opening the socket is
+    // enough: the services close it straight away because no credentials are sent.
     const SOCKET_TARGETS = [
         {
-            id: "socket-peerjs",
-            title: "PeerJS broker reachable (WSS 443) — used by the activity today",
-            url: () => {
-                const id = Math.random().toString(36).slice(2, 18);
-                const token = Math.random().toString(36).slice(2, 18);
-                return `wss://0.peerjs.com/peerjs?key=peerjs&id=${id}&token=${token}&version=1.5.5`;
-            },
+            id: "socket-ably-main",
+            title: "Ably realtime endpoint (WSS 443)",
+            url: () => "wss://main.realtime.ably.net/",
+        },
+        {
+            id: "socket-ably-fallback",
+            title: "Ably fallback endpoint (WSS 443)",
+            url: () => "wss://main.a.fallback.ably-realtime.com/",
         },
         {
             id: "socket-ably",
-            title: "Ably reachable (free-tier relay option)",
+            title: "Ably legacy endpoint (WSS 443)",
             url: () => "wss://realtime.ably.io/",
+        },
+        {
+            id: "socket-firebase",
+            title: "Firebase database endpoint (WSS 443)",
+            url: () => {
+                const address = RELAY_CONFIG?.firebase?.databaseURL;
+                if (!address) return null;
+                const host = attempt(() => new URL(address).host, null);
+                return host ? `wss://${host}/.ws?v=5&ns=${host.split(".")[0]}` : null;
+            },
         },
     ];
 
@@ -564,7 +445,7 @@
                     status: result.ok ? "pass" : (asset.critical ? "fail" : "warn"),
                     detail: result.ok
                         ? `Reachable in ${result.milliseconds} ms.`
-                        : `Not reachable (${result.error}). ${asset.critical ? "The activity cannot work without this." : "Only affects the QR code."}`,
+                        : `Not reachable (${result.error}). ${asset.critical ? "The activity cannot work without this." : asset.impact}`,
                     data: result,
                 };
             }, 14000);
@@ -584,7 +465,7 @@
                 status: working ? "pass" : "fail",
                 detail: working
                     ? `Opened ${working.url} in ${working.milliseconds} ms, so outbound WebSockets are permitted.`
-                    : `None of ${results.length} public echo services opened. Either every WebSocket is blocked, or all the test services are down — read this alongside the PeerJS and Ably results above.`,
+                    : `None of ${results.length} public echo services opened. Either every WebSocket is blocked, or all the test services are down — read this alongside the relay results.`,
                 data: results,
             };
         }, 30000);
@@ -592,112 +473,152 @@
 
     async function checkSockets(container) {
         for (const target of SOCKET_TARGETS) {
+            const url = target.url();
+            if (!url) continue; // service not configured in js/relay-config.js
             await runCheck(container, target.id, target.title, async () => {
-                const result = await probeSocket(target.url());
+                const result = await probeSocket(url);
                 return {
-                    status: result.ok ? "pass" : "fail",
+                    // Not fatal on its own: both relay libraries can fall back to HTTPS polling.
+                    status: result.ok ? "pass" : "warn",
                     detail: result.ok
                         ? `Socket opened in ${result.milliseconds} ms.`
-                        : `Could not open (${result.reason}).`,
+                        : `Could not open (${result.reason}). The relay library may still work over its HTTPS fallback; see the end-to-end relay checks.`,
                     data: result,
                 };
             }, 12000);
         }
     }
 
-    async function checkStunServers(container) {
-        await runCheck(container, "ice-stun", "Which UDP routes out of this network work (STUN)", async () => {
-            const results = [];
-            for (const server of STUN_SERVERS) {
-                const gathered = await gatherIce([{urls: server.url}], 7000);
-                const reflexive = gathered.candidates.filter(candidate => candidate.type === "srflx");
-                results.push({
-                    label: server.label,
-                    url: server.url,
-                    reachable: reflexive.length > 0,
-                    mappedPorts: reflexive.map(candidate => candidate.port),
-                    mappedAddresses: [...new Set(reflexive.map(candidate => candidate.address))],
-                    errors: gathered.errors,
-                });
-            }
-            const working = results.filter(result => result.reachable);
-            const lines = results.map(result => `  ${result.reachable ? "yes" : "no "}  ${result.label}`);
-            return {
-                status: working.length > 0 ? "pass" : "fail",
-                detail: working.length > 0
-                    ? `${working.length} of ${results.length} reachable:\n${lines.join("\n")}\nUDP does leave this network, so a TURN server on a working port would also work.`
-                    : `None reachable:\n${lines.join("\n")}\nUDP appears to be blocked entirely. Only TCP/TLS relaying on port 443, or a WebSocket relay, can work here.`,
-                data: results,
-            };
-        }, 60000);
+    // --------------------------------------------------------- relay checks
+
+    let RELAY_CONFIG = null;
+    let RELAY_MODULES = null;
+
+    function relayOverride() {
+        return new URLSearchParams(location.search).get("relay") ?? "";
     }
 
-    async function checkNatType(container) {
-        await runCheck(container, "ice-nat", "NAT behaviour (does direct pairing stand a chance?)", async () => {
-            const gathered = await gatherIce([
-                {urls: "stun:stun.l.google.com:19302"},
-                {urls: "stun:stun1.l.google.com:19302"},
-                {urls: "stun:stun.cloudflare.com:3478"},
-            ], 9000);
-            const reflexive = gathered.candidates.filter(candidate => candidate.type === "srflx");
-            if (reflexive.length === 0) {
-                return {
-                    status: "warn",
-                    detail: "No reflexive candidates, so NAT behaviour could not be measured. This usually means UDP is blocked.",
-                    data: {verdict: "unknown", candidates: reflexive},
-                };
-            }
-            // Only candidates sharing a local base port can be compared; without that the test is meaningless.
-            const comparable = reflexive.filter(candidate => candidate.relatedPort != null);
-            if (comparable.length < 2) {
-                return {
-                    status: "warn",
-                    detail: `Only ${comparable.length} comparable mapping(s), so NAT type could not be determined. Not a problem in itself — the live pairing test in section 3 is the real answer.`,
-                    data: {verdict: "unknown", reflexiveCount: reflexive.length, comparableCount: comparable.length},
-                };
-            }
-            const groups = new Map();
-            comparable.forEach(candidate => {
-                const key = candidate.relatedPort;
-                if (!groups.has(key)) groups.set(key, new Set());
-                groups.get(key).add(candidate.port);
-            });
-            const mappings = [...groups.entries()].map(([base, ports]) => ({basePort: base, mappedPorts: [...ports]}));
-            const symmetric = mappings.some(mapping => mapping.mappedPorts.length > 1);
-            return {
-                status: symmetric ? "fail" : "pass",
-                detail: symmetric
-                    ? `Symmetric NAT: one local port ${mappings.filter(m => m.mappedPorts.length > 1).map(m => `(${m.basePort} → ${m.mappedPorts.join(", ")})`).join(" ")} was given a different public port per destination. Two devices behind this cannot connect directly, so a relay is required.`
-                    : "Cone-style NAT: the same public port was reused across destinations, so direct connections are possible in principle.",
-                data: {verdict: symmetric ? "symmetric" : "cone", mappings},
-            };
-        }, 20000);
+    // The activity's own pairing code, so these checks exercise exactly what the day will use.
+    async function relayModules() {
+        if (!RELAY_MODULES) {
+            const [connection, config, transports] = await Promise.all([
+                import("./js/connection.js"),
+                import("./js/relay-config.js"),
+                import("./js/transports/index.js"),
+            ]);
+            RELAY_CONFIG = config.RELAY_CONFIG;
+            RELAY_MODULES = {connection, transports, config: config.RELAY_CONFIG};
+        }
+        return RELAY_MODULES;
     }
 
-    async function checkPeerJsDefaults(container) {
-        await runCheck(container, "ice-peerjs-defaults", "Routes available with the activity's current settings", async () => {
-            const gathered = await gatherIce(PEERJS_DEFAULT_ICE, 9000);
-            const counts = gathered.counts;
-            const usable = counts.srflx + counts.relay;
-            return {
-                status: counts.relay > 0 ? "pass" : (usable > 0 ? "warn" : "fail"),
-                detail: `host ${counts.host}, server-reflexive ${counts.srflx}, relay ${counts.relay}.\n` +
-                    (counts.relay > 0
-                        ? "A relay route exists."
-                        : "No relay route. PeerJS's built-in TURN servers (eu-0/us-0.turn.peerjs.com) no longer exist in DNS, so the activity currently has no fallback when a direct connection is impossible.") +
-                    (gathered.errors.length ? `\nICE errors: ${gathered.errors.join(" | ")}` : ""),
-                data: gathered,
-            };
-        }, 20000);
+    function waitFor(predicate, milliseconds) {
+        return new Promise(resolve => {
+            const started = performance.now();
+            const timer = setInterval(() => {
+                const done = attempt(predicate, false);
+                if (done || performance.now() - started > milliseconds) {
+                    clearInterval(timer);
+                    resolve(Boolean(done));
+                }
+            }, 50);
+        });
+    }
+
+    function syntheticSample(seq) {
+        return {type: "sensor", seq, t: Date.now(), ax: Math.sin(seq / 5), ay: 0.5, az: 9.81, gx: 0, gy: 0, gz: 0, interval: 16, source: "network-check"};
+    }
+
+    // Runs a computer and a phone session side by side in this tab over a single relay.
+    async function relayLoopback(modules, transport) {
+        const {PairingBridge} = modules.connection;
+        const timing = {heartbeatMs: 700, batchMs: 100};
+        const received = [];
+        let session = "";
+        let lastDetail = "";
+        const noteRoutes = routes => {
+            if (routes?.[0]?.detail) lastDetail = routes[0].detail;
+        };
+        const started = performance.now();
+        const desktop = new PairingBridge({
+            role: "desktop", transports: [transport], config: modules.config, timing,
+            onReady: code => { session = code; },
+            onData: sample => received.push(sample),
+            onRoutes: noteRoutes,
+        });
+        desktop.start();
+        const phone = new PairingBridge({
+            role: "phone", session, transports: [transport], config: modules.config, timing,
+            onRoutes: noteRoutes,
+        });
+        phone.start();
+        try {
+            if (!(await waitFor(() => phone.connected && desktop.connected, 25000))) {
+                return {ok: false, stage: "connect", detail: lastDetail || "No reply through this relay within 25 s."};
+            }
+            const connectMs = Math.round(performance.now() - started);
+            for (let seq = 1; seq <= 30; seq += 1) phone.send(syntheticSample(seq));
+            const delivered = await waitFor(() => received.length >= 30, 10000);
+            await waitFor(() => phone.routes[0]?.rtt != null, 4000);
+            const rtt = phone.routes[0]?.rtt ?? null;
+            const mode = phone.routes[0]?.detail || desktop.routes[0]?.detail || "";
+            return {ok: delivered, stage: delivered ? "done" : "data", connectMs, rtt, received: received.length, mode, detail: lastDetail};
+        } finally {
+            phone.destroy();
+            desktop.destroy();
+        }
+    }
+
+    async function checkRelays(container) {
+        let modules;
+        try {
+            modules = await relayModules();
+        } catch (error) {
+            await runCheck(container, "relay-setup", "Relay services", async () => ({
+                status: "fail",
+                detail: `Could not load the activity's pairing code (${error?.message ?? error}).`,
+            }));
+            return;
+        }
+        const transports = modules.transports.selectTransports(modules.config, relayOverride());
+        if (!transports.length) {
+            await runCheck(container, "relay-setup", "Relay services", async () => ({
+                status: "fail",
+                detail: "No relay service is configured in js/relay-config.js (or the ?relay= address option names none), so phones cannot pair. See relay/README.md.",
+            }));
+            return;
+        }
+        for (const transport of transports) {
+            await runCheck(container, `relay-${transport.id}`, `Relay: ${transport.label} (end to end)`, async () => {
+                const result = {label: transport.label, ...(await relayLoopback(modules, transport))};
+                if (!result.ok) {
+                    return {
+                        status: "fail",
+                        detail: result.stage === "connect"
+                            ? `Could not pair through ${transport.label}: ${result.detail}`
+                            : `Paired, but only ${result.received} of 30 test readings arrived.`,
+                        data: result,
+                    };
+                }
+                const slow = result.rtt != null && result.rtt > 600;
+                return {
+                    status: slow ? "warn" : "pass",
+                    detail: `Paired in ${result.connectMs} ms; 30 of 30 test readings arrived` +
+                        (result.rtt != null ? `; round trip ${result.rtt} ms` : "") +
+                        (result.mode ? ` (${result.mode})` : "") + "." +
+                        (slow ? " Slow enough that the live chart may lag." : ""),
+                    data: result,
+                };
+            }, 50000);
+        }
     }
 
     async function checkAlternativeServices(container) {
-        await runCheck(container, "alternatives", "Free alternatives we might switch to (HTTPS reachability)", async () => {
+        await runCheck(container, "alternatives", "Other services we could add as relays (HTTPS reachability)", async () => {
             const targets = [
-                {label: "Ably (free tier relay)", url: "https://rest.ably.io/time"},
-                {label: "Firebase (free tier relay)", url: "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js"},
-                {label: "Supabase (free tier relay)", url: "https://supabase.com/favicon.ico"},
-                {label: "Cloudflare (TURN provider)", url: "https://www.cloudflare.com/favicon.ico"},
+                {label: "Supabase", url: "https://supabase.com/favicon.ico"},
+                {label: "Cloudflare Workers", url: "https://workers.cloudflare.com/favicon.ico"},
+                {label: "PubNub", url: "https://ps.pndsn.com/time/0"},
             ];
             const results = [];
             for (const target of targets) {
@@ -715,7 +636,7 @@
 
     async function checkDownloadWeight(container) {
         await runCheck(container, "bandwidth", "Rough download speed (Pyodide is a large download)", async () => {
-            const url = "https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js";
+            const url = "https://cdn.jsdelivr.net/npm/ably@2.29.0/build/ably.min.js";
             const started = performance.now();
             try {
                 const response = await fetch(url, {cache: "no-store"});
@@ -743,46 +664,38 @@
     function buildRecommendations() {
         const lines = [];
         const status = id => findCheck(id)?.status ?? "missing";
-        const data = id => findCheck(id)?.data ?? null;
 
         const pagesOk = status("asset-pages") === "pass";
         const pyodideOk = status("asset-pyodide") === "pass";
-        const brokerOk = status("socket-peerjs") === "pass";
         const genericSocketOk = status("socket-generic") === "pass";
-        const ablyOk = status("socket-ably") === "pass";
-        const stunResults = data("ice-stun") ?? [];
-        const anyUdp = Array.isArray(stunResults) && stunResults.some(result => result.reachable);
-        const natVerdict = data("ice-nat")?.verdict ?? "unknown";
-        const relayCount = data("ice-peerjs-defaults")?.counts?.relay ?? 0;
+        const relayChecks = REPORT.checks.filter(check => check.id.startsWith("relay-") && check.id !== "relay-setup");
+        const relayName = check => check.data?.label ?? check.id.replace("relay-", "");
+        const working = relayChecks.filter(check => check.status === "pass" || check.status === "warn").map(relayName);
+        const broken = relayChecks.filter(check => check.status === "fail").map(relayName);
 
         if (!pagesOk) lines.push("The activity page itself is blocked here. Nothing else matters until IT allows github.io, or you host the page elsewhere.");
         if (!pyodideOk) lines.push("cdn.jsdelivr.net is blocked, so the Python model cannot load. Ask IT to allow it, or bundle Pyodide with the activity.");
 
-        if (!anyUdp) {
-            lines.push("UDP does not leave this network. Direct phone-to-computer connections are impossible here regardless of settings.");
-        } else {
-            const ports = stunResults.filter(result => result.reachable).map(result => result.label).join(", ");
-            lines.push(`UDP does get out on: ${ports}. A TURN server on one of those ports would work.`);
+        if (status("relay-setup") === "fail") {
+            lines.push("Phone pairing is not set up: add the Ably key and/or Firebase database URL to js/relay-config.js (see relay/README.md).");
+        } else if (relayChecks.length) {
+            if (working.length >= 2) {
+                lines.push(`Both relays work on this network (${working.join(", ")}), so pairing has a backup if one fails.`);
+            } else if (working.length === 1 && broken.length) {
+                lines.push(`Pairing will work through ${working[0]}, but ${broken.join(", ")} failed here, so there is no backup on this network. The failed check above says why.`);
+            } else if (working.length === 1) {
+                lines.push(`Pairing works through ${working[0]}, the only relay being tested, so there is no backup. Configure the second relay in js/relay-config.js for redundancy.`);
+            } else {
+                lines.push("No relay worked end to end, so phones cannot pair from this machine. Use the simulator, and show the failed relay checks to IT.");
+            }
         }
 
-        if (natVerdict === "symmetric") lines.push("This network uses symmetric NAT, so a relay is mandatory even if UDP is open.");
-        if (relayCount === 0) lines.push("Confirmed: the activity has no working relay configured, because PeerJS's built-in TURN servers no longer exist.");
-
-        if (!brokerOk && genericSocketOk) {
-            lines.push("WebSockets work in general but the PeerJS broker specifically does not. Self-hosting a broker, or moving to a relay service, would sidestep this.");
-        }
-        if (!brokerOk && !genericSocketOk) {
-            lines.push("No WebSocket connections succeed at all, which points to a filtering proxy. A WebSocket relay would not help here; treat the standalone phone option as the realistic fallback.");
-        }
-        if (ablyOk) {
-            lines.push("Ably's realtime endpoint is reachable, so the free-tier WebSocket relay approach is viable on this network.");
+        if (!genericSocketOk && working.length) {
+            lines.push("General WebSockets look blocked, but the relays still worked (they can fall back to HTTPS polling). Expect slightly more lag.");
         }
 
-        if (pagesOk && brokerOk && anyUdp && natVerdict !== "symmetric") {
-            lines.push("This network looks capable of direct pairing. If a real phone still fails, suspect client isolation on the wifi, which blocks device-to-device traffic even between devices on the same SSID. The live pairing test in section 3 will settle it.");
-        }
-
-        lines.push("Fallbacks that need no network at all: the built-in simulator, or running the activity standalone on the phone.");
+        lines.push("This machine is only half the story: run the live pairing test (section 3) with a phone on the network visitors will use (guest wifi or mobile data).");
+        lines.push("A fallback that needs no network at all: the built-in simulator.");
 
         REPORT.recommendations = lines;
         return lines;
@@ -861,13 +774,12 @@
         REPORT.capabilities = collectCapabilities();
         verdict.textContent = "Running…";
 
+        await relayModules().catch(error => REPORT.errors.push({kind: "relay-config", message: String(error?.message ?? error)}));
         const phases = [
             checkAssets,
             checkSockets,
             checkGenericSockets,
-            checkStunServers,
-            checkNatType,
-            checkPeerJsDefaults,
+            checkRelays,
             checkAlternativeServices,
             checkDownloadWeight,
         ];
@@ -887,12 +799,19 @@
 
     // --------------------------------------------------------- pairing test
 
-    const PAIRING = {peer: null, connection: null, samples: 0, openedAt: 0};
+    const PAIRING = {desktop: null, samples: 0, connectedAt: 0, reported: false};
 
-    async function ensurePeerLibrary() {
-        if (typeof window.Peer === "function") return true;
-        await loadScript("https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js");
-        return typeof window.Peer === "function";
+    function describeRoutes(routes) {
+        return (routes ?? []).map(route => {
+            const state = route.active ? "in use" : route.state === "ready" ? "ready" : route.state === "failed" ? "failed" : "connecting";
+            return `${route.label}: ${state}${route.detail ? ` (${route.detail})` : ""}`;
+        }).join("\n");
+    }
+
+    function recordPairing(status, detail, data, milliseconds = 0) {
+        REPORT.checks = REPORT.checks.filter(check => check.id !== "pairing");
+        REPORT.checks.push({id: "pairing", title: "Live pairing test", status, detail, data, milliseconds});
+        refreshSummary();
     }
 
     async function startPairingTest() {
@@ -900,106 +819,80 @@
         const container = document.getElementById("pairingResults");
         button.disabled = true;
         container.innerHTML = "";
+        PAIRING.desktop?.destroy();
+        PAIRING.samples = 0;
+        PAIRING.connectedAt = 0;
+        PAIRING.reported = false;
 
         const setupRow = addCheck(container, "Pairing session");
-        let available = false;
+        const routeRow = addCheck(container, "Relays");
+        const dataRow = addCheck(container, "Readings from the phone");
+        dataRow.set("skip", "Waiting for a phone to connect.");
+
+        let modules;
         try {
-            available = await ensurePeerLibrary();
+            modules = await relayModules();
         } catch (error) {
-            setupRow.set("fail", `PeerJS library could not load (${error?.message ?? error}).`);
-            REPORT.checks.push({id: "pairing", title: "Live pairing test", status: "fail", detail: "PeerJS library blocked", data: null, milliseconds: 0});
-            button.disabled = false;
-            refreshSummary();
-            return;
-        }
-        if (!available) {
-            setupRow.set("fail", "PeerJS library did not load.");
+            setupRow.set("fail", `Could not load the activity's pairing code (${error?.message ?? error}).`);
             button.disabled = false;
             return;
         }
 
-        const routeRow = addCheck(container, "Route the data actually took");
-        routeRow.set("skip", "Waiting for a phone to connect.");
-
-        try {
-            PAIRING.peer = new window.Peer(undefined, {debug: 0});
-        } catch (error) {
-            setupRow.set("fail", `Could not create a session (${error?.message ?? error}).`);
-            button.disabled = false;
-            return;
-        }
-
-        PAIRING.peer.on("open", id => {
-            setupRow.set("pass", "Session created. Open the link below on a phone, on whichever network you want to test.");
-            showPairingLink(id);
+        let latestRoutes = [];
+        const desktop = new modules.connection.PairingBridge({
+            role: "desktop",
+            config: modules.config,
+            relayOverride: relayOverride(),
+            onReady: session => {
+                setupRow.set("pass", "Session created. Open the link below on a phone, on whichever network you want to test.");
+                showPairingLink(session);
+            },
+            onRoutes: routes => {
+                latestRoutes = routes;
+                const anyReady = routes.some(route => route.state === "ready");
+                routeRow.set(anyReady ? "pass" : routes.every(route => route.state === "failed") ? "fail" : "busy", describeRoutes(routes));
+            },
+            onStatus: (state, message) => {
+                if (state === "error") {
+                    setupRow.set("fail", message);
+                    recordPairing("fail", message, {routes: latestRoutes});
+                }
+                if (state === "connected" && !PAIRING.connectedAt) {
+                    PAIRING.connectedAt = performance.now();
+                    dataRow.set("busy", "Phone connected. Measuring for a few seconds…");
+                    setTimeout(() => {
+                        const seconds = (performance.now() - PAIRING.connectedAt) / 1000;
+                        const active = latestRoutes.find(route => route.active);
+                        const via = active ? `${active.label}${active.detail ? ` (${active.detail})` : ""}` : "an unknown relay";
+                        const ok = PAIRING.samples > 0;
+                        const detail = ok
+                            ? `Received ${PAIRING.samples} readings in ${seconds.toFixed(1)} s via ${via}. Pairing works between these two networks.`
+                            : "The phone connected but no readings arrived.";
+                        dataRow.set(ok ? "pass" : "fail", detail);
+                        recordPairing(ok ? "pass" : "fail", detail, {
+                            samples: PAIRING.samples,
+                            seconds: Number(seconds.toFixed(1)),
+                            routes: latestRoutes,
+                        }, Math.round(seconds * 1000));
+                    }, 6000);
+                }
+            },
+            onData: () => {
+                PAIRING.samples += 1;
+            },
         });
-
-        PAIRING.peer.on("error", error => {
-            setupRow.set("fail", `Session error: ${error?.type ?? ""} ${error?.message ?? ""}`.trim());
-            REPORT.checks = REPORT.checks.filter(check => check.id !== "pairing");
-            REPORT.checks.push({
-                id: "pairing",
-                title: "Live pairing test",
-                status: "fail",
-                detail: `Session error: ${error?.type ?? "unknown"}`,
-                data: null,
-                milliseconds: 0,
-            });
-            refreshSummary();
-            button.disabled = false;
-        });
-
-        PAIRING.peer.on("connection", connection => {
-            PAIRING.connection = connection;
-            PAIRING.samples = 0;
-            PAIRING.openedAt = performance.now();
-            connection.on("open", () => {
-                routeRow.set("busy", "Phone connected. Measuring for a few seconds…");
-                attempt(() => connection.send({type: "ping", sentAt: Date.now()}));
-                setTimeout(async () => {
-                    const route = await describeSelectedRoute(connection.peerConnection);
-                    const elapsed = (performance.now() - PAIRING.openedAt) / 1000;
-                    const description = route
-                        ? `${route.localType ?? "?"} ↔ ${route.remoteType ?? "?"} over ${route.protocol ?? "?"}` +
-                          (route.relayProtocol ? ` (relayed via ${route.relayProtocol})` : "") +
-                          (route.roundTripMs != null ? `, round trip ${route.roundTripMs} ms` : "")
-                        : "route details unavailable";
-                    const meaning = route?.localType === "relay"
-                        ? "Traffic went through a TURN relay."
-                        : route?.localType === "srflx" || route?.remoteType === "srflx"
-                            ? "Direct connection across NAT — no relay was needed."
-                            : route?.localType === "host"
-                                ? "Both devices were on the same network segment."
-                                : "";
-                    routeRow.set("pass", `${description}\nReceived ${PAIRING.samples} samples in ${elapsed.toFixed(1)} s. ${meaning}`);
-                    REPORT.checks = REPORT.checks.filter(check => check.id !== "pairing");
-                    REPORT.checks.push({
-                        id: "pairing",
-                        title: "Live pairing test",
-                        status: "pass",
-                        detail: `${description}. ${PAIRING.samples} samples in ${elapsed.toFixed(1)} s. ${meaning}`,
-                        data: {route, samples: PAIRING.samples, seconds: Number(elapsed.toFixed(1))},
-                        milliseconds: Math.round(performance.now() - PAIRING.openedAt),
-                    });
-                    refreshSummary();
-                }, 6000);
-            });
-            connection.on("data", data => {
-                if (data?.type === "sample") PAIRING.samples += 1;
-                if (data?.type === "ping") attempt(() => connection.send({type: "pong", sentAt: data.sentAt}));
-            });
-            connection.on("error", error => routeRow.set("fail", `Connection error: ${error?.message ?? error}`));
-            connection.on("close", () => routeRow.set("warn", "Phone disconnected."));
-        });
-
+        PAIRING.desktop = desktop;
+        desktop.start();
         button.disabled = false;
+        button.textContent = "Start a new pairing test";
     }
 
-    function showPairingLink(peerId) {
+    function showPairingLink(session) {
         const url = new URL(location.href);
         url.search = "";
         url.hash = "";
-        url.searchParams.set("peer", peerId);
+        url.searchParams.set("s", session);
+        if (relayOverride()) url.searchParams.set("relay", relayOverride());
         const link = url.toString();
 
         const linkBox = document.getElementById("pairingLink");
@@ -1025,107 +918,68 @@
         button.disabled = true;
         container.innerHTML = "";
         const row = addCheck(container, "Connecting to the computer");
+        const routeRow = addCheck(container, "Relays");
 
+        const session = new URLSearchParams(location.search).get("s");
+        if (!session) {
+            row.set("fail", "This link has no session code in it. Generate a fresh link on the computer.");
+            button.disabled = false;
+            return;
+        }
+
+        let modules;
         try {
-            await ensurePeerLibrary();
+            modules = await relayModules();
         } catch (error) {
-            row.set("fail", `PeerJS library could not load on this phone (${error?.message ?? error}).`);
+            row.set("fail", `Could not load the pairing code on this phone (${error?.message ?? error}).`);
             button.disabled = false;
             return;
         }
 
-        const target = new URLSearchParams(location.search).get("peer");
-        if (!target) {
-            row.set("fail", "This link has no session id in it. Generate a fresh link on the computer.");
-            button.disabled = false;
-            return;
-        }
-
-        let peer = null;
-        try {
-            peer = new window.Peer(undefined, {debug: 0});
-        } catch (error) {
-            row.set("fail", `Could not start a session (${error?.message ?? error}).`);
-            button.disabled = false;
-            return;
-        }
-
+        let sending = null;
+        let finished = false;
+        const phone = new modules.connection.PairingBridge({
+            role: "phone",
+            session,
+            config: modules.config,
+            relayOverride: relayOverride(),
+            onRoutes: routes => routeRow.set(routes.some(route => route.healthy) ? "pass" : "busy", describeRoutes(routes)),
+            onStatus: (state, message) => {
+                if (finished) return;
+                if (state === "error") {
+                    finished = true;
+                    clearTimeout(failTimer);
+                    row.set("fail", message);
+                    button.disabled = false;
+                } else if (state === "connected" && !sending) {
+                    clearTimeout(failTimer);
+                    row.set("busy", "Connected. Sending test readings for a few seconds…");
+                    let seq = 0;
+                    sending = setInterval(() => {
+                        seq += 1;
+                        phone.send(syntheticSample(seq));
+                        if (seq >= 150) {
+                            clearInterval(sending);
+                            finished = true;
+                            const route = phone.routes.find(item => item.healthy);
+                            row.set("pass", `Connected and sent ${seq} readings` +
+                                (route ? ` via ${route.label}${route.rtt != null ? ` (round trip ${route.rtt} ms)` : ""}` : "") +
+                                ". Check the computer for the result.");
+                            button.disabled = false;
+                            setTimeout(() => phone.destroy(), 2000);
+                        }
+                    }, 40);
+                }
+            },
+        });
         const failTimer = setTimeout(() => {
-            row.set("fail", "Gave up after 25 seconds. This is the failure you have been seeing — the report on the computer will show why.");
+            if (finished) return;
+            finished = true;
+            row.set("fail", "Gave up after 30 seconds. The relay lines below show which services this phone could not reach.");
             button.disabled = false;
-        }, 25000);
-
-        peer.on("open", () => {
-            const connection = peer.connect(target, {reliable: true, serialization: "json"});
-            connection.on("open", () => {
-                clearTimeout(failTimer);
-                row.set("pass", "Connected. Sending test samples for a few seconds…");
-                let sent = 0;
-                const timer = setInterval(() => {
-                    const ok = attempt(() => {
-                        connection.send({type: "sample", index: sent, t: Date.now()});
-                        return true;
-                    }, false);
-                    sent += ok ? 1 : 0;
-                    if (sent >= 100) {
-                        clearInterval(timer);
-                        row.set("pass", `Connected and sent ${sent} samples. Pairing works on this network — check the computer for the route details.`);
-                        button.disabled = false;
-                    }
-                }, 40);
-            });
-            connection.on("error", error => {
-                clearTimeout(failTimer);
-                row.set("fail", `Connection error: ${error?.type ?? ""} ${error?.message ?? ""}`.trim());
-                button.disabled = false;
-            });
-        });
-
-        peer.on("error", error => {
-            clearTimeout(failTimer);
-            row.set("fail", `Session error: ${error?.type ?? "unknown"}. ${error?.message ?? ""}`.trim());
-            button.disabled = false;
-        });
-    }
-
-    // ------------------------------------------------------------ turn test
-
-    async function runTurnTest() {
-        const button = document.getElementById("runTurn");
-        const container = document.getElementById("turnResults");
-        button.disabled = true;
-        container.innerHTML = "";
-        const row = addCheck(container, "Relay candidates from your TURN server");
-
-        const url = attempt(() => document.getElementById("turnUrl").value.trim(), "");
-        const username = attempt(() => document.getElementById("turnUser").value.trim(), "");
-        const credential = attempt(() => document.getElementById("turnPass").value.trim(), "");
-
-        const gathered = await settle(
-            gatherIce([{urls: url, username, credential}], 10000),
-            15000,
-            () => ({counts: {relay: 0, srflx: 0, host: 0}, candidates: [], errors: ["timed out"]}),
-        );
-        const relay = gathered?.counts?.relay ?? 0;
-        const detail = `host ${gathered?.counts?.host ?? 0}, server-reflexive ${gathered?.counts?.srflx ?? 0}, relay ${relay}\n` +
-            (relay > 0
-                ? "This TURN server works on this network. Wiring it into connection.js would fix pairing."
-                : "No relay candidates. Either the credentials are wrong, or this port is blocked too.") +
-            (gathered?.errors?.length ? `\nErrors: ${gathered.errors.join(" | ")}` : "");
-
-        row.set(relay > 0 ? "pass" : "fail", detail);
-        REPORT.checks = REPORT.checks.filter(check => check.id !== "turn-manual");
-        REPORT.checks.push({
-            id: "turn-manual",
-            title: "Manual TURN test",
-            status: relay > 0 ? "pass" : "fail",
-            // Deliberately records the URL only — credentials stay out of the saved report.
-            detail: `${url} → relay candidates: ${relay}`,
-            data: {url, relayCandidates: relay, counts: gathered?.counts ?? null, errors: gathered?.errors ?? []},
-            milliseconds: 0,
-        });
-        refreshSummary();
-        button.disabled = false;
+            phone.destroy();
+        }, 30000);
+        phone.start();
     }
 
     // ---------------------------------------------------------- sensor test
@@ -1201,9 +1055,6 @@
         document.getElementById("startPairing").addEventListener("click", () => {
             startPairingTest().catch(error => REPORT.errors.push({kind: "pairing", message: String(error?.message ?? error)}));
         });
-        document.getElementById("runTurn").addEventListener("click", () => {
-            runTurnTest().catch(error => REPORT.errors.push({kind: "turn", message: String(error?.message ?? error)}));
-        });
         document.getElementById("runSensors").addEventListener("click", () => {
             runSensorTest().catch(error => REPORT.errors.push({kind: "sensors", message: String(error?.message ?? error)}));
         });
@@ -1232,7 +1083,7 @@
         });
 
         // A pairing link opened on a phone shows the phone panel instead of the full suite.
-        if (new URLSearchParams(location.search).get("peer")) {
+        if (new URLSearchParams(location.search).get("s")) {
             document.getElementById("phonePanel").classList.remove("hidden");
             document.getElementById("mainPanel").classList.add("hidden");
         }
