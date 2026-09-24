@@ -24,6 +24,7 @@ class MemoryRelay {
         this.failOpen = false;
         this.members = new Set();
         this.delivered = 0;
+        this.delay = 1;
     }
 
     factory() {
@@ -41,7 +42,7 @@ class MemoryRelay {
             if (member !== sender && member.session === sender.session) {
                 this.delivered += 1;
                 const copy = structuredClone(message);
-                setTimeout(() => member.onMessage(copy), 1);
+                setTimeout(() => member.onMessage(copy), this.delay);
             }
         }
     }
@@ -173,6 +174,35 @@ test("the phone switches to the second relay when the first goes down, without l
     assert.equal(phone.activeRoute.id, "a", "returns to the preferred relay once it recovers");
     phone.destroy();
     desktop.destroy();
+});
+
+test("moving back to the preferred relay does not lose readings still in flight on the backup", async () => {
+    const first = new MemoryRelay("a");
+    const second = new MemoryRelay("b");
+    const received = [];
+    let session = "";
+    const timing = {...FAST, healthTimeoutMs: 1000};
+    const desktop = track(new PairingBridge({
+        role: "desktop", transports: [first.factory(), second.factory()], timing,
+        onReady: code => { session = code; }, onData: data => received.push(data),
+    }));
+    desktop.start();
+    const phone = track(new PairingBridge({role: "phone", session, transports: [first.factory(), second.factory()], timing}));
+    phone.start();
+    await until(() => phone.routes.every(route => route.healthy));
+
+    first.down = true;
+    await until(() => !phone.routes[0].healthy, 3000);
+    // The backup is slow, so these readings are still on their way when the
+    // preferred relay recovers and the phone moves back to it.
+    second.delay = 200;
+    for (let seq = 1; seq <= 5; seq += 1) phone.send(sample(seq));
+    await until(() => phone.pending.length === 0);
+    first.down = false;
+    await until(() => phone.activeRoute?.id === "a", 1000);
+    for (let seq = 6; seq <= 10; seq += 1) phone.send(sample(seq));
+    await until(() => received.length === 10, 2000);
+    assert.deepEqual(received.map(item => item.seq), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 });
 
 test("readings sent during a total outage are delivered once a relay recovers", async () => {

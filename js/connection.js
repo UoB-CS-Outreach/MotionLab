@@ -99,16 +99,9 @@ export class PairingBridge {
     }
 
     get activeRoute() {
-        const healthy = this.routes.filter(route => route.healthy);
-        if (!healthy.length) return null;
-        // Prefer the configured order, unless a later relay is clearly faster
-        // (e.g. the preferred one has fallen back to slow HTTP polling).
-        const score = route => (route.rtt ?? 100) + route.index * 150;
-        const best = healthy.reduce((winner, route) => (score(route) < score(winner) ? route : winner));
-        // Hysteresis: small round-trip jitter must not make the phone flip between relays.
-        const current = healthy.find(route => route.id === this.lastActiveRoute);
-        if (current && score(current) <= score(best) + 100) return current;
-        return best;
+        // Plain failover: the first answering relay in the configured order. The phone
+        // moves only when a relay stops answering, and back once the preferred one recovers.
+        return this.routes.find(route => route.healthy) ?? null;
     }
 
     routeSummary() {
@@ -148,10 +141,9 @@ export class PairingBridge {
             }
         }
 
-        this.routes = this.transports.map((transport, index) => ({
+        this.routes = this.transports.map(transport => ({
             id: transport.id,
             label: transport.label,
-            index,
             factory: transport,
             instance: null,
             state: "connecting",
@@ -378,12 +370,12 @@ export class PairingBridge {
 
         let rows = this.pending;
         const previous = this.routes.find(item => item.id === this.lastActiveRoute);
-        if (previous && previous !== route && !previous.healthy) {
-            // The previous relay may have silently dropped messages before it was
-            // declared unhealthy. Re-send recent readings; the computer ignores
-            // any it already has.
-            const newest = rows.length ? rows[0][0] : Infinity;
-            rows = [...this.recent.filter(row => row[0] < newest), ...rows];
+        if (previous && previous !== route) {
+            // Readings sent through the previous relay may have been dropped before it
+            // was declared unhealthy, or still be in flight when the phone moves back to
+            // the preferred one. Re-send recent readings; the computer ignores any it has.
+            const oldestPending = rows.length ? rows[0][0] : Infinity;
+            rows = [...this.recent.filter(row => row[0] < oldestPending), ...rows];
         }
         if (!rows.length) return;
 

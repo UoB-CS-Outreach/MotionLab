@@ -9,9 +9,9 @@
 // the activity still works through the built-in simulator.
 
 export const RELAY_CONFIG = {
-    // Order of preference when more than one relay is healthy. The phone
-    // still fails over automatically if the preferred one stops answering,
-    // or switches if the preferred one is much slower. Firebase goes first
+    // Order of preference. The phone uses the first relay that is answering,
+    // moves to the next if it stops, and returns once the preferred one
+    // recovers. Firebase goes first
     // because its free plan is metered by bandwidth, which goes much further
     // than Ably's monthly message allowance (see relay/README.md).
     order: ["firebase", "ably"],
