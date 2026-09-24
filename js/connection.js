@@ -76,7 +76,6 @@ export class PairingBridge {
         this.recent = [];
         this.lastActiveRoute = "";
         this.source = "";
-        this.replaced = false;
 
         // Computer state
         this.currentPhone = "";
@@ -120,7 +119,6 @@ export class PairingBridge {
     start() {
         this.destroy();
         this.destroyed = false;
-        this.replaced = false;
 
         if (this.role === "desktop") {
             if (!this.session) this.session = newSessionCode();
@@ -332,7 +330,6 @@ export class PairingBridge {
     receiveAtPhone(route, message) {
         if (message.p && message.p !== this.phoneId) return; // a reply meant for another phone
         if (message.cur && message.cur !== this.phoneId) {
-            this.replaced = true;
             this.emitStatus("error", "Another phone has taken over");
             this.destroy();
             return;

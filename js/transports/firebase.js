@@ -48,12 +48,9 @@ class FirebaseTransport {
         this.sdk = {...appSdk, ...databaseSdk};
         const sdk = this.sdk;
 
-        const options = {databaseURL: this.config.databaseURL};
-        if (this.config.apiKey) options.apiKey = this.config.apiKey;
-        if (this.config.projectId) options.projectId = this.config.projectId;
         // A uniquely named app per connection lets the network check run a
         // computer and a phone side by side in one tab.
-        this.app = sdk.initializeApp(options, `motionlab-${this.role}-${randomToken(6)}`);
+        this.app = sdk.initializeApp({databaseURL: this.config.databaseURL}, `motionlab-${this.role}-${randomToken(6)}`);
         this.database = sdk.getDatabase(this.app);
 
         const base = sdk.ref(this.database, `motionlab/${this.session}`);

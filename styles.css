@@ -114,7 +114,6 @@ main {
     padding: clamp(24px, 3vw, 42px);
 }
 
-.eyebrow,
 .step-label {
     margin: 0 0 5px;
     color: var(--teal);
@@ -380,11 +379,6 @@ label {
     color: #982d25;
     border-color: #d98f88;
     background: #fff6f5;
-}
-
-.button.compact {
-    min-height: 42px;
-    padding-inline: 13px;
 }
 
 .button.wide {

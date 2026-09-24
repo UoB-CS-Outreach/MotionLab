@@ -58,10 +58,8 @@
         button:disabled { background: #9aa9bd; color: #fff; cursor: default; }
 
         label { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 4px; }
-        label.inline { display: flex; gap: 8px; align-items: center; font-weight: 400; color: var(--muted); font-size: 14px; margin: 10px 0 0; }
-        label.inline input { width: auto; }
 
-        input, textarea {
+        input {
             font: inherit;
             width: 100%;
             box-sizing: border-box;
@@ -105,7 +103,7 @@
         <h2>What this page does and does not do</h2>
         <p style="font-size: 14px; margin-bottom: 4px;"><strong>It does:</strong></p>
         <ul>
-            <li>Make ordinary web requests to the services this activity uses (GitHub Pages, jsDelivr, gstatic, and the Ably and Firebase relay services) and to a few alternatives we might switch to.</li>
+            <li>Make ordinary web requests to the services this activity uses (GitHub Pages, jsDelivr, cdnjs, gstatic, and the Ably and Firebase relay services).</li>
             <li>Pass short test messages (no personal data) through each relay service, from this page back to itself.</li>
             <li>Record browser and connection capabilities, kept in this tab until you press Download.</li>
         </ul>
@@ -126,7 +124,7 @@
 
     <section id="mainPanel">
         <h2>1. Network checks</h2>
-        <p class="detail" style="margin-top: 0;">Takes about a minute. Every check has a time limit, so a blocked service cannot hang the run.</p>
+        <p class="detail" style="margin-top: 0;">Takes a few seconds, or up to a minute if services are blocked. Every check has a time limit, so a blocked service cannot hang the run.</p>
         <label for="notes">Notes for later (room, machine, wired or wifi)</label>
         <input id="notes" placeholder="e.g. Lab 1.15, wired desktop, Chrome, campus network" spellcheck="false">
         <p></p>
@@ -177,7 +175,7 @@
 
     const REPORT = {
         tool: "motionlab-network-check",
-        version: 3,
+        version: 4,
         generatedAt: new Date().toISOString(),
         notes: "",
         context: {},
@@ -372,19 +370,13 @@
 
     function collectCapabilities() {
         return {
-            webRtc: attempt(() => typeof RTCPeerConnection === "function", false),
             webSocket: attempt(() => typeof WebSocket === "function", false),
             webAssembly: attempt(() => typeof WebAssembly === "object", false),
-            sharedArrayBuffer: attempt(() => typeof SharedArrayBuffer === "function", false),
-            serviceWorker: attempt(() => "serviceWorker" in navigator, false),
             deviceMotion: attempt(() => typeof DeviceMotionEvent !== "undefined", false),
             deviceMotionNeedsPermission: attempt(
                 () => typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function",
                 false,
             ),
-            deviceOrientation: attempt(() => typeof DeviceOrientationEvent !== "undefined", false),
-            // Storage is unavailable in some sandboxes; a throw here is expected, not a fault.
-            localStorage: attempt(() => Boolean(window.localStorage), false),
             clipboard: attempt(() => Boolean(navigator.clipboard), false),
             downloads: attempt(() => "download" in document.createElement("a"), false),
         };
@@ -414,11 +406,6 @@
             url: () => "wss://main.a.fallback.ably-realtime.com/",
         },
         {
-            id: "socket-ably",
-            title: "Ably legacy endpoint (WSS 443)",
-            url: () => "wss://realtime.ably.io/",
-        },
-        {
             id: "socket-firebase",
             title: "Firebase database endpoint (WSS 443)",
             url: () => {
@@ -428,13 +415,6 @@
                 return host ? `wss://${host}/.ws?v=5&ns=${host.split(".")[0]}` : null;
             },
         },
-    ];
-
-    // Tried in turn: a single echo service being down must not be mistaken for a blocked network.
-    const GENERIC_SOCKETS = [
-        "wss://echo.websocket.events",
-        "wss://ws.postman-echo.com/raw",
-        "wss://echo.websocket.org",
     ];
 
     async function checkAssets(container) {
@@ -450,25 +430,6 @@
                 };
             }, 14000);
         }
-    }
-
-    async function checkGenericSockets(container) {
-        await runCheck(container, "socket-generic", "WebSockets allowed in general", async () => {
-            const results = [];
-            for (const url of GENERIC_SOCKETS) {
-                const result = await probeSocket(url, 8000);
-                results.push(result);
-                if (result.ok) break;
-            }
-            const working = results.find(result => result.ok);
-            return {
-                status: working ? "pass" : "fail",
-                detail: working
-                    ? `Opened ${working.url} in ${working.milliseconds} ms, so outbound WebSockets are permitted.`
-                    : `None of ${results.length} public echo services opened. Either every WebSocket is blocked, or all the test services are down — read this alongside the relay results.`,
-                data: results,
-            };
-        }, 30000);
     }
 
     async function checkSockets(container) {
@@ -584,7 +545,7 @@
         if (!transports.length) {
             await runCheck(container, "relay-setup", "Relay services", async () => ({
                 status: "fail",
-                detail: "No relay service is configured in js/relay-config.js (or the ?relay= address option names none), so phones cannot pair. See relay/README.md.",
+                detail: "No relay service is configured in js/relay-config.js (or the ?relay= address option names none), so phones cannot pair.",
             }));
             return;
         }
@@ -611,27 +572,6 @@
                 };
             }, 50000);
         }
-    }
-
-    async function checkAlternativeServices(container) {
-        await runCheck(container, "alternatives", "Other services we could add as relays (HTTPS reachability)", async () => {
-            const targets = [
-                {label: "Supabase", url: "https://supabase.com/favicon.ico"},
-                {label: "Cloudflare Workers", url: "https://workers.cloudflare.com/favicon.ico"},
-                {label: "PubNub", url: "https://ps.pndsn.com/time/0"},
-            ];
-            const results = [];
-            for (const target of targets) {
-                const result = await probeUrl(target.url, 8000);
-                results.push({label: target.label, ok: result.ok, milliseconds: result.milliseconds, error: result.error ?? null});
-            }
-            const reachable = results.filter(result => result.ok);
-            return {
-                status: reachable.length > 0 ? "pass" : "warn",
-                detail: results.map(result => `  ${result.ok ? "yes" : "no "}  ${result.label}`).join("\n"),
-                data: results,
-            };
-        }, 45000);
     }
 
     async function checkDownloadWeight(container) {
@@ -667,7 +607,6 @@
 
         const pagesOk = status("asset-pages") === "pass";
         const pyodideOk = status("asset-pyodide") === "pass";
-        const genericSocketOk = status("socket-generic") === "pass";
         const relayChecks = REPORT.checks.filter(check => check.id.startsWith("relay-") && check.id !== "relay-setup");
         const relayName = check => check.data?.label ?? check.id.replace("relay-", "");
         const working = relayChecks.filter(check => check.status === "pass" || check.status === "warn").map(relayName);
@@ -677,7 +616,7 @@
         if (!pyodideOk) lines.push("cdn.jsdelivr.net is blocked, so the Python model cannot load. Ask IT to allow it, or bundle Pyodide with the activity.");
 
         if (status("relay-setup") === "fail") {
-            lines.push("Phone pairing is not set up: add the Ably key and/or Firebase database URL to js/relay-config.js (see relay/README.md).");
+            lines.push("Phone pairing is not set up: add the Ably key and/or Firebase database URL to js/relay-config.js.");
         } else if (relayChecks.length) {
             if (working.length >= 2) {
                 lines.push(`Both relays work on this network (${working.join(", ")}), so pairing has a backup if one fails.`);
@@ -688,10 +627,6 @@
             } else {
                 lines.push("No relay worked end to end, so phones cannot pair from this machine. Use the simulator, and show the failed relay checks to IT.");
             }
-        }
-
-        if (!genericSocketOk && working.length) {
-            lines.push("General WebSockets look blocked, but the relays still worked (they can fall back to HTTPS polling). Expect slightly more lag.");
         }
 
         lines.push("This machine is only half the story: run the live pairing test (section 3) with a phone on the network visitors will use (guest wifi or mobile data).");
@@ -775,14 +710,7 @@
         verdict.textContent = "Running…";
 
         await relayModules().catch(error => REPORT.errors.push({kind: "relay-config", message: String(error?.message ?? error)}));
-        const phases = [
-            checkAssets,
-            checkSockets,
-            checkGenericSockets,
-            checkRelays,
-            checkAlternativeServices,
-            checkDownloadWeight,
-        ];
+        const phases = [checkAssets, checkSockets, checkRelays, checkDownloadWeight];
         for (const phase of phases) {
             try {
                 await phase(container);
