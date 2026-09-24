@@ -18,14 +18,14 @@ export const RELAY_CONFIG = {
 
     ably: {
         // API key restricted to {"motionlab:*": ["publish", "subscribe"]}.
-        key: "",
+        key: "swXShg.h9C55A:-UOM1ZYCn0qJjnBcTCcj8A3ClKbV2lqmGQCGN9oF6qc",
     },
 
     firebase: {
         // Only databaseURL is required for the Realtime Database. Use the URL
         // shown at the top of the Realtime Database "Data" tab, e.g.
         // "https://motionlab-uob-default-rtdb.europe-west1.firebasedatabase.app".
-        databaseURL: "",
+        databaseURL: "https://motionlab-uob-default-rtdb.europe-west1.firebasedatabase.app/",
         apiKey: "",
         projectId: "",
     },
